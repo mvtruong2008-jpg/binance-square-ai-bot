@@ -1,12 +1,12 @@
-
 name: Binance Square AI Bot
 
 on:
   workflow_dispatch:
     inputs:
       publish:
-        description: "Publish a real post?"
+        description: "Publish one real post?"
         type: boolean
+        required: false
         default: false
 
   schedule:
@@ -24,28 +24,44 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      BINANCE_SQUARE_OPENAPI_KEY: ${{ secrets.BINANCE_SQUARE_OPENAPI_KEY }}
+      GEMINI_MODEL: gemini-3.5-flash-lite
+      # Scheduled runs publish; manual runs publish only if checked.
+      PUBLISH: ${{ github.event_name == 'schedule' || inputs.publish == true }}
 
     steps:
-      - name: Checkout code
+      - name: Checkout source code
         uses: actions/checkout@v4
 
-      - name: Setup Python
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Setup Node
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "22"
 
-      - name: Download Binance tool
+      - name: Restore post history
+        uses: actions/cache/restore@v4
+        with:
+          path: data/history.json
+          key: square-post-history-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            square-post-history-
+
+      - name: Download official Binance publisher
         run: git clone --depth 1 https://github.com/binance/binance-skills-hub.git
 
-      - name: Generate and publish
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          BINANCE_SQUARE_OPENAPI_KEY: ${{ secrets.BINANCE_SQUARE_OPENAPI_KEY }}
-          GEMINI_MODEL: gemini-3.5-flash-lite
-          DRY_RUN: ${{ github.event_name == 'schedule' || !inputs.publish }}
+      - name: Generate and optionally publish
         run: python bot.py
+
+      - name: Save published post history
+        if: success() && env.PUBLISH == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: data/history.json
+          key: square-post-history-${{ github.run_id }}-${{ github.run_attempt }}
