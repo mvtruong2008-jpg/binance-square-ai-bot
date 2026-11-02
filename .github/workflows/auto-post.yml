@@ -39,9 +39,9 @@ jobs:
         with:
           node-version: "22"
 
+      
       - name: Download Binance tool
-        run: |
-          git clone --depth 1 https://github.com/binance/binance-skills-hub.git
+        run: git clone --depth 1 https://github.com/binance/binance-skills-hub.git
 
       - name: Generate and publish
         env:
