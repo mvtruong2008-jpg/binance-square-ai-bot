@@ -45,7 +45,9 @@ Rules:
 - No invented numbers, quotes, prices or events.
 - Attribute unverified headlines as reports.
 - Use only information supported by the headlines.
-- Include one source URL.
+- Do not include URLs, links, or source addresses in the post.
+- Never display Google News RSS links.
+- Write only the post content with relevant hashtags.
 - Output the finished post only.
 """
     url = (
@@ -74,7 +76,22 @@ news = get_news()
 if not news:
     raise RuntimeError("No news found.")
 
-post = generate_post(news)
+
+# Remove URLs from AI-generated posts
+post = re.sub(
+    r"https?://[^\s<>]+",
+    "",
+    post
+)
+
+# Remove empty lines and extra spaces
+post = "\n".join(
+    line.strip()
+    for line in post.splitlines()
+    if line.strip()
+).strip()
+
+print("Post cleaned: URLs removed.")
 
 if len(re.findall(r"\$[A-Za-z0-9]+", post)) > 2:
     raise RuntimeError("Too many cashtags.")
