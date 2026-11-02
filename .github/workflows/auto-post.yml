@@ -3,6 +3,12 @@ name: Binance Square AI Bot
 
 on:
   workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish a real post?"
+        type: boolean
+        default: false
+
   schedule:
     - cron: "7,37 * * * *"
       timezone: "Asia/Ho_Chi_Minh"
@@ -11,25 +17,36 @@ permissions:
   contents: read
 
 concurrency:
-  group: binance-square-ai-bot
+  group: binance-square-publisher
   cancel-in-progress: false
 
 jobs:
-  generate:
+  publish:
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
     steps:
-      - name: Download source code
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Generate AI post
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Download Binance tool
+        run: |
+          git clone --depth 1 https://github.com/binance/binance-skills-hub.git
+
+      - name: Generate and publish
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          BINANCE_SQUARE_OPENAPI_KEY: ${{ secrets.BINANCE_SQUARE_OPENAPI_KEY }}
           GEMINI_MODEL: gemini-3.5-flash-lite
+          DRY_RUN: ${{ github.event_name == 'schedule' || !inputs.publish }}
         run: python bot.py
