@@ -1,17 +1,22 @@
-"""Binance Square AI publisher (Python standard library only).
+"""Binance Square: RSS -> Gemini -> price/chart/logo image -> Square post.
 
-Reads recent crypto headlines from public RSS feeds, drafts one short post
-with Gemini, removes URLs, and optionally publishes via Binance's official
-Square Post Skill. No API keys are stored in this file.
+GitHub Actions supplies secrets in environment variables. No credentials here.
+Manual runs are previews unless PUBLISH=true. Scheduled runs can publish.
+Demo: python bot.py --demo (offline image test, never publishes).
 """
 
+from __future__ import annotations
+
 import hashlib
+import io
 import json
+import math
 import os
 import random
 import re
 import subprocess
 import sys
+import textwrap
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -20,211 +25,369 @@ from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 
-MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
-PUBLISH = os.getenv("PUBLISH", "false").lower() == "true"
-HISTORY_FILE = Path("data/history.json")
-BINANCE_SKILL_DIR = Path("binance-skills-hub/skills/binance/square-post")
-TOPICS = (
-    ("Bitcoin", "Bitcoin cryptocurrency when:2d"),
-    ("Ethereum", "Ethereum cryptocurrency when:2d"),
-    ("BNB", "BNB Chain cryptocurrency when:2d"),
-)
+from PIL import Image, ImageDraw, ImageFont
+
+COINS = {
+    "BTC": {"name": "Bitcoin", "query": "Bitcoin cryptocurrency when:2d", "gecko": "bitcoin", "color": "#F7931A"},
+    "ETH": {"name": "Ethereum", "query": "Ethereum cryptocurrency when:2d", "gecko": "ethereum", "color": "#7E91ED"},
+    "BNB": {"name": "BNB", "query": "BNB Chain cryptocurrency when:2d", "gecko": "binancecoin", "color": "#F3BA2F"},
+}
+HISTORY = Path("data/history.json")
+OUTPUT = Path("output/market_card.png")
+BINANCE_SKILL = Path("binance-skills-hub/skills/binance/square-post")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
+PUBLISH = os.getenv("PUBLISH", "false").lower() in ("1", "true", "yes")
 
 
-def fetch_recent_headlines():
-    """Get titles published within the last 48 hours (no article contents)."""
+def get_json(url, headers=None, timeout=30):
+    req = urllib.request.Request(url, headers={"User-Agent": "BinanceSquareMarketCard/1.0", **(headers or {})})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            return json.load(response)
+    except urllib.error.HTTPError as error:
+        raise RuntimeError(f"Market/News HTTP {error.code} from {urllib.parse.urlparse(url).netloc}") from error
+
+
+def fetch_stories():
+    """Read RSS titles, not full articles. URLs stay out of public posts."""
     now = datetime.now(timezone.utc)
-    result = []
-    for topic, query in TOPICS:
-        encoded = urllib.parse.quote(query)
-        url = (
-            f"https://news.google.com/rss/search?q={encoded}"
-            "&hl=en-US&gl=US&ceid=US:en"
-        )
-        request = urllib.request.Request(
-            url, headers={"User-Agent": "Mozilla/5.0"}
-        )
+    stories = {}
+    for symbol, coin in COINS.items():
+        query = urllib.parse.quote(coin["query"])
+        url = f"https://news.google.com/rss/search?q={query}&hl=en-US&gl=US&ceid=US:en"
         try:
-            with urllib.request.urlopen(request, timeout=25) as response:
-                root = ET.fromstring(response.read())
-        except (urllib.error.URLError, ET.ParseError) as exc:
-            print(f"RSS warning for {topic}: {exc}")
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=25) as resp:
+                root = ET.fromstring(resp.read())
+        except (urllib.error.URLError, ET.ParseError, TimeoutError) as exc:
+            print(f"RSS warning [{symbol}]: {type(exc).__name__}")
             continue
-
-        for item in root.findall("./channel/item")[:20]:
-            title = (item.findtext("title") or "").strip()
-            date_text = item.findtext("pubDate") or ""
+        for item in root.findall("./channel/item")[:25]:
+            raw_title = (item.findtext("title") or "").strip()
+            date_string = item.findtext("pubDate") or ""
             try:
-                published = parsedate_to_datetime(date_text)
-                if published.tzinfo is None:
-                    published = published.replace(tzinfo=timezone.utc)
-                published = published.astimezone(timezone.utc)
+                pubdate = parsedate_to_datetime(date_string)
+                if pubdate.tzinfo is None:
+                    pubdate = pubdate.replace(tzinfo=timezone.utc)
+                pubdate = pubdate.astimezone(timezone.utc)
             except (ValueError, TypeError, IndexError):
                 continue
-            if not title or not now - timedelta(hours=48) <= published <= now:
+            if not raw_title or not now - timedelta(hours=48) <= pubdate <= now + timedelta(minutes=10):
                 continue
-
-            # Google News RSS titles usually end with ' - Publisher'.
-            headline, _, publisher = title.rpartition(" - ")
-            if not headline:
-                headline, publisher = title, "a news publisher"
-            # De-duplicate across feeds by the normalized full title.
-            fingerprint = hashlib.sha256(title.casefold().encode()).hexdigest()
-            result.append({
+            headline, separator, publisher = raw_title.rpartition(" - ")
+            if not separator:
+                headline, publisher = raw_title, "A news outlet"
+            title_normalized = re.sub(r"[^a-z0-9]+", "", headline.casefold())
+            if not title_normalized:
+                continue
+            fingerprint = hashlib.sha256(title_normalized.encode()).hexdigest()
+            stories[fingerprint] = {
                 "id": fingerprint,
+                "symbol": symbol,
                 "headline": headline.strip(),
                 "publisher": publisher.strip(),
-                "published": published.isoformat(),
-                "topic": topic,
-            })
-
-    return list({story["id"]: story for story in result}.values())
+                "date": pubdate.isoformat(),
+            }
+    return sorted(stories.values(), key=lambda story: story["date"], reverse=True)
 
 
 def load_history():
     try:
-        data = json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
+        data = json.loads(HISTORY.read_text(encoding="utf-8"))
         return data if isinstance(data, dict) else {}
     except (OSError, ValueError):
         return {}
 
 
 def save_history(history, story):
-    # Keep only recent entries so the cache remains small.
     now = datetime.now(timezone.utc)
     history[story["id"]] = now.isoformat()
-    cutoff = now - timedelta(days=7)
-    clean = {}
-    for key, value in history.items():
+    cutoff = now - timedelta(days=14)
+    cleaned = {}
+    for key, stamp in history.items():
+        if not isinstance(stamp, str):
+            continue
         try:
-            stamp = datetime.fromisoformat(value)
-            if stamp.tzinfo and stamp >= cutoff:
-                clean[key] = value
-        except (ValueError, TypeError):
-            pass
-    HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
-    HISTORY_FILE.write_text(
-        json.dumps(clean, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+            dt = datetime.fromisoformat(stamp)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            if dt.astimezone(timezone.utc) >= cutoff:
+                cleaned[key] = stamp
+        except ValueError:
+            continue
+    history = cleaned
+    HISTORY.parent.mkdir(parents=True, exist_ok=True)
+    HISTORY.write_text(json.dumps(history, indent=2), encoding="utf-8")
 
 
-def generate_post(story):
-    api_key = os.getenv("GEMINI_API_KEY")
+def get_binance_market(symbol):
+    """Unauthenticated Binance Spot endpoint; quotes are in USDT."""
+    pair = f"{symbol}USDT"
+    api = "https://data-api.binance.vision/api/v3"
+    ticker = get_json(f"{api}/ticker/24hr?{urllib.parse.urlencode({'symbol': pair})}")
+    klines = get_json(f"{api}/klines?{urllib.parse.urlencode({'symbol': pair, 'interval': '1h', 'limit': 168})}")
+    prices = [float(candle[4]) for candle in klines]
+    price = float(ticker["lastPrice"])
+    change = float(ticker["priceChangePercent"])
+    if len(prices) < 12 or not all(math.isfinite(p) and p > 0 for p in prices):
+        raise RuntimeError("Binance supplied too few valid 7-day chart points")
+    if not math.isfinite(price) or price <= 0 or not math.isfinite(change):
+        raise RuntimeError("Invalid Binance ticker data")
+    return {"symbol": symbol, "price": price, "change": change,
+            "prices": prices, "quote": "USDT", "source": "Binance Spot", "asof": datetime.now(timezone.utc)}
+
+
+def get_coingecko_market(symbol):
+    """Optional fallback; a free Demo key increases reliability."""
+    coin_id = COINS[symbol]["gecko"]
+    base = "https://api.coingecko.com/api/v3"
+    key = os.getenv("COINGECKO_DEMO_KEY", "").strip()
+    headers = {"x-cg-demo-api-key": key} if key else {}
+    market_url = f"{base}/coins/markets?{urllib.parse.urlencode({'vs_currency': 'usd', 'ids': coin_id})}"
+    chart_url = f"{base}/coins/{coin_id}/market_chart?{urllib.parse.urlencode({'vs_currency': 'usd', 'days': 7})}"
+    market = get_json(market_url, headers)
+    chart = get_json(chart_url, headers)
+    if not market:
+        raise RuntimeError("CoinGecko returned no market record")
+    prices = [float(row[1]) for row in chart.get("prices", [])]
+    price = float(market[0]["current_price"])
+    change = float(market[0]["price_change_percentage_24h"])
+    if len(prices) < 12 or not all(math.isfinite(p) and p > 0 for p in prices):
+        raise RuntimeError("CoinGecko supplied too few valid chart points")
+    return {"symbol": symbol, "price": price, "change": change,
+            "prices": prices, "quote": "USD", "source": "CoinGecko", "asof": datetime.now(timezone.utc)}
+
+
+def get_market(symbol):
+    try:
+        return get_binance_market(symbol)
+    except (RuntimeError, ValueError, KeyError, TypeError, urllib.error.URLError) as exc:
+        print(f"Binance market warning: {exc}. Trying CoinGecko fallback.")
+        try:
+            return get_coingecko_market(symbol)
+        except (RuntimeError, ValueError, KeyError, TypeError, urllib.error.URLError) as fallback_exc:
+            raise RuntimeError(f"No usable live market data for {symbol}: {fallback_exc}") from fallback_exc
+
+
+def gemini_post(story, market):
+    api_key = os.getenv("GEMINI_API_KEY", "")
     if not api_key:
-        raise RuntimeError("Missing GEMINI_API_KEY in GitHub Secrets")
-    prompt = f"""Write ONE original short Binance Square crypto post in English.
+        raise RuntimeError("Missing GEMINI_API_KEY GitHub Secret")
+    # Only brief, attributable summaries; source headlines are not verified articles.
+    prompt = f"""Write an ORIGINAL concise Binance Square post in ENGLISH (2-4 sentences, 35-85 words).
+Cryptocurrency: {COINS[story['symbol']]['name']} (${story['symbol']})
 News headline: {story['headline']}
-News publisher: {story['publisher']}
-Headline publication time (UTC): {story['published']}
-Topic: {story['topic']}
-
-Requirements:
-- Write 2 to 4 concise sentences, approximately 45-85 words.
-- Attribute the reported development to the publisher; a headline alone
-  is not proof that an allegation is true.
-- Do not invent price levels, statistics, incidents, dates, or quotes.
-- No price predictions, financial advice, hype, or promises of profit.
-- Maximum TWO cashtags, for example $BTC, and optional relevant hashtags.
-- Absolutely NO URLs, website domains, Markdown links, citations or source links.
-- Return only the post text, not a heading or commentary.
+Publisher as listed by RSS: {story['publisher']}
+Headline published at UTC: {story['date']}
+Current {market['source']} market snapshot: {market['price']:.8g} {market['quote']}, 24-hour change {market['change']:+.2f}%.
+Rules:
+- Treat the headline as a report attributed to the publisher, NOT verified fact.
+- Do not fabricate causes, events, price predictions, specific claims or quotes.
+- If mentioning the market snapshot, explicitly treat it as CURRENT, not at publication time.
+- At most TWO crypto cashtags (e.g. $BTC). Optional 1 relevant hashtag.
+- Absolutely NO URLs, web addresses, references, Markdown links, or source-link blocks.
+- No pump hype, calls to trade, or guarantees. Return only post body text.
 """
-    url = (
-        "https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{urllib.parse.quote(MODEL, safe='')}:generateContent"
-    )
-    data = json.dumps({
-        "contents": [{"parts": [{"text": prompt}]}]
-    }).encode("utf-8")
-    request = urllib.request.Request(
-        url, data=data, method="POST",
-        headers={
-            "Content-Type": "application/json",
-            "x-goog-api-key": api_key,
-        },
-    )
+    endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + urllib.parse.quote(GEMINI_MODEL, safe="") + ":generateContent"
+    payload = json.dumps({"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"temperature": 0.45}}).encode()
+    req = urllib.request.Request(endpoint, data=payload, method="POST", headers={
+        "x-goog-api-key": api_key, "Content-Type": "application/json"})
     try:
-        with urllib.request.urlopen(request, timeout=90) as response:
-            payload = json.load(response)
+        with urllib.request.urlopen(req, timeout=90) as resp:
+            response = json.load(resp)
     except urllib.error.HTTPError as exc:
-        # Do not print the key or full request URL.
-        raise RuntimeError(f"Gemini API returned HTTP {exc.code}") from exc
-
+        raise RuntimeError(f"Gemini API HTTP {exc.code}: confirm model/quota in AI Studio") from exc
     try:
-        return "".join(
-            part.get("text", "")
-            for part in payload["candidates"][0]["content"]["parts"]
-        ).strip()
-    except (KeyError, IndexError, TypeError) as exc:
+        text = "".join(part.get("text", "") for part in response["candidates"][0]["content"]["parts"])
+    except (KeyError, TypeError, IndexError) as exc:
         raise RuntimeError("Gemini returned no usable text") from exc
+    return clean_post(text)
 
 
-def clean_post(raw):
-    # Preserve the visible label of Markdown links, not the URL.
-    text = re.sub(r"\[([^\]]+)\]\(https?://[^)]*\)", r"\1", raw)
-    # Remove URLs even if Gemini ignored the no-links instruction.
+def clean_post(text):
+    text = re.sub(r"\[([^\]]+)\]\(https?://[^)]*\)", r"\1", text)
     text = re.sub(r"(?i)\b(?:https?://|www\.)[^\s<>]+", "", text)
-    # Remove bare web addresses without http(s), e.g. news.google.com/rss/...
-    text = re.sub(
-        r"(?i)\b(?:[a-z0-9-]+\.)+[a-z]{2,}(?:/[^\s<>]*)?", "", text
-    )
-    # Remove a trailing source/citation line if it contains no URL anymore.
-    text = re.sub(r"(?im)^\s*(?:source|sources|nguồn|link)\s*:\s*.*$", "", text)
+    text = re.sub(r"(?i)\b(?:[a-z0-9-]+\.)+[a-z]{2,}(?:/[^\s<>]*)?", "", text)
+    text = re.sub(r"(?im)^\s*(?:source|nguồn|link|references)\s*:\s*.*$", "", text)
     text = re.sub(r"[ \t]{2,}", " ", text)
-    text = re.sub(r"\n{3,}", "\n\n", text).strip()
-    text = text.strip(" \n\t\"'`-–")
-    if not text or len(text) > 1200:
-        raise RuntimeError("Generated post is empty or too long")
-    if len(re.findall(r"\$[A-Za-z][A-Za-z0-9]*", text)) > 2:
-        raise RuntimeError("Generated post has more than two cashtags")
-    if re.search(r"(?i)(?:https?://|www\.)", text):
-        raise RuntimeError("Generated post still contains a URL")
-    return text
+    text = re.sub(r"\n{3,}", "\n\n", text).strip(" \n\"'`-–")
+    cashtags = re.findall(r"(?<!\w)\$[A-Za-z][A-Za-z0-9]*", text)
+    if len(cashtags) > 2:
+        # Strip extra cashtags without changing ordinary sentences.
+        for surplus in cashtags[2:]:
+            text = text.replace(surplus, "", 1)
+        text = re.sub(r"[ \t]{2,}", " ", text)
+    if not 40 <= len(text) <= 1200 or "http" in text.lower():
+        raise RuntimeError("Generated post failed text/URL safety validation")
+    return text.strip()
 
 
-def publish_to_binance(post):
+def font(size, bold=False):
+    name = "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf"
+    try:
+        return ImageFont.truetype(name, size)
+    except OSError:
+        path = "/usr/share/fonts/truetype/dejavu/" + name
+        try:
+            return ImageFont.truetype(path, size)
+        except OSError:
+            return ImageFont.load_default()
+
+
+def ellipsize(draw, text, max_width, chosen_font):
+    if draw.textbbox((0, 0), text, font=chosen_font)[2] <= max_width:
+        return text
+    while text and draw.textbbox((0, 0), text + "...", font=chosen_font)[2] > max_width:
+        text = text[:-1]
+    return text.rstrip() + "..."
+
+
+def logo_image(symbol):
+    """CC0 coin icons, falling back to a letter badge if GitHub is offline."""
+    url = f"https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/{symbol.lower()}.png"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "CryptoCard/1.0"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = resp.read(300_000)
+        icon = Image.open(io.BytesIO(data)).convert("RGBA")
+        return icon.resize((116, 116), Image.Resampling.LANCZOS)
+    except (OSError, ValueError, urllib.error.URLError):
+        return None
+
+
+def money(value):
+    if value >= 1000:
+        return f"{value:,.2f}"
+    if value >= 1:
+        return f"{value:,.3f}"
+    return f"{value:,.5f}"
+
+
+def create_card(story, market, path=OUTPUT):
+    """Create a 1200x675 original infographic from real live market data."""
+    W, H = 1200, 675
+    base = Image.new("RGB", (W, H), (10, 16, 31))
+    px = base.load()
+    for y in range(H):
+        for x in range(W):
+            glow = max(0.0, 1 - math.hypot((x - 1030) / 950, (y - 70) / 820))
+            px[x, y] = (int(9 + 12 * glow), int(17 + 14 * glow), int(34 + 19 * glow))
+    draw = ImageDraw.Draw(base)
+    accent = (34, 211, 151) if market["change"] >= 0 else (251, 113, 133)
+    WHITE = (244, 247, 252)
+    MUTED = (148, 163, 184)
+    BORDER = (42, 55, 75)
+    draw.rounded_rectangle((42, 26, 1158, 648), radius=28, outline=BORDER, width=2)
+    draw.text((74, 54), "MARKET  /  CRYPTO BRIEF", fill=(239, 193, 72), font=font(22, True))
+    utc = market["asof"].strftime("%d %b %Y  %H:%M UTC")
+    time_w = draw.textbbox((0, 0), utc, font=font(18))[2]
+    draw.text((1125 - time_w, 56), utc, fill=MUTED, font=font(18))
+    draw.line((74, 101, 1125, 101), fill=BORDER, width=2)
+
+    image = logo_image(story["symbol"])
+    if image:
+        base.paste(image, (83, 126), image)
+    else:
+        draw.ellipse((84, 130, 195, 241), fill=COINS[story["symbol"]]["color"])
+        draw.text((107, 165), story["symbol"], fill=(19, 25, 35), font=font(27, True))
+    draw.text((226, 127), COINS[story["symbol"]]["name"], fill=WHITE, font=font(45, True))
+    draw.text((226, 185), f"{story['symbol']}  /  {market['quote']}", fill=MUTED, font=font(23))
+
+    price_text = money(market["price"])
+    price_font = font(57, True)
+    price_width = draw.textbbox((0, 0), price_text, font=price_font)[2]
+    draw.text((1125 - price_width, 116), price_text, fill=WHITE, font=price_font)
+    pct_text = f"24H  {market['change']:+.2f}%"
+    box_font = font(24, True)
+    pct_width = draw.textbbox((0, 0), pct_text, font=box_font)[2]
+    xleft = 1125 - pct_width - 34
+    draw.rounded_rectangle((xleft, 197, 1125, 242), radius=15, fill=(27, 54, 54) if market["change"] >= 0 else (68, 35, 49))
+    draw.text((xleft + 17, 204), pct_text, fill=accent, font=box_font)
+
+    draw.text((78, 267), "7-DAY PRICE TREND", fill=MUTED, font=font(18, True))
+    left, right, top, bottom = 87, 1119, 313, 477
+    for i in range(4):
+        yy = top + i * (bottom - top) / 3
+        draw.line((left, yy, right, yy), fill=BORDER, width=1)
+    vals = market["prices"]
+    lo, hi = min(vals), max(vals)
+    pad = max((hi - lo) * .1, hi * .001)
+    lo -= pad
+    hi += pad
+    n = len(vals)
+    points = [(left + i * (right - left) / max(1, n-1), bottom - (v - lo) / (hi - lo) * (bottom - top)) for i, v in enumerate(vals)]
+    area = [(left, bottom)] + points + [(right, bottom)]
+    draw.polygon(area, fill=(19, 46, 54) if market["change"] >= 0 else (60, 33, 53))
+    draw.line(points, fill=accent, width=5, joint="curve")
+    x_last, y_last = points[-1]
+    draw.ellipse((x_last-7, y_last-7, x_last+7, y_last+7), fill=accent)
+    draw.text((86, 493), "7 DAYS AGO", fill=MUTED, font=font(16))
+    right_text = "LATEST"
+    draw.text((right - draw.textbbox((0, 0), right_text, font=font(16))[2], 493), right_text, fill=MUTED, font=font(16))
+
+    draw.line((74, 532, 1125, 532), fill=BORDER, width=2)
+    headline = re.sub(r"\s+", " ", story["headline"]).strip()
+    headline = ellipsize(draw, headline, 1030, font(24, True))
+    draw.text((77, 545), headline, fill=WHITE, font=font(24, True))
+    footer = f"CHART / {market['source']}  |  7D history  |  {market['quote']}  |  News summary based on published headlines"
+    draw.text((77, 603), ellipsize(draw, footer, 1050, font(15)), fill=MUTED, font=font(15))
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    base.save(path, "PNG", optimize=True)
+    print(f"IMAGE: {path} ({path.stat().st_size // 1024} KB)")
+    return path
+
+
+def post_image(post_text, image_path):
     if not os.getenv("BINANCE_SQUARE_OPENAPI_KEY"):
-        raise RuntimeError("Missing BINANCE_SQUARE_OPENAPI_KEY")
-    script = BINANCE_SKILL_DIR / "scripts/post-text.mjs"
-    if not script.is_file():
-        raise RuntimeError(f"Official Binance publisher script missing: {script}")
-    completed = subprocess.run(
-        ["node", "scripts/post-text.mjs", "--text", post],
-        cwd=BINANCE_SKILL_DIR,
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-    if completed.stdout:
-        print(completed.stdout)
-    if completed.returncode != 0:
-        raise RuntimeError(
-            "Binance publisher failed: " + completed.stderr.strip()[:1200]
-        )
-    if completed.stderr:
-        print("Publisher notes:", completed.stderr.strip()[:500])
+        raise RuntimeError("Missing BINANCE_SQUARE_OPENAPI_KEY GitHub Secret")
+    script = BINANCE_SKILL / "scripts/post-image.mjs"
+    if not script.exists():
+        raise RuntimeError(f"Official Binance script missing: {script}")
+    # Pass an absolute path as the official script runs from its own folder.
+    cmd = ["node", "scripts/post-image.mjs", "--text", post_text, "--images", str(Path(image_path).resolve())]
+    result = subprocess.run(cmd, cwd=BINANCE_SKILL, capture_output=True, text=True, timeout=240)
+    if result.stdout:
+        print(result.stdout)
+    if result.returncode != 0:
+        raise RuntimeError("Binance image publish failed: " + result.stderr.strip()[-1400:])
+    if result.stderr:
+        print("Binance publisher note:", result.stderr[-400:])
+
+
+def demo():
+    # Deliberately synthetic test data -- no fake price is ever published.
+    story = {"symbol": "BTC", "headline": "Sample graphic: test layout using synthetic market data"}
+    prices = [100 + i * .025 + 3 * math.sin(i / 8) for i in range(168)]
+    market = {"price": prices[-1], "change": 1.26, "prices": prices,
+              "quote": "USDT", "source": "DEMO (SYNTHETIC)", "asof": datetime.now(timezone.utc)}
+    create_card(story, market)
+    print("DEMO only: generated image, no API calls, nothing published.")
 
 
 def main():
+    if "--demo" in sys.argv:
+        demo()
+        return
     history = load_history()
-    stories = fetch_recent_headlines()
-    available = [story for story in stories if story["id"] not in history]
-    if not available:
-        print("SKIP: No new headline in the last 48 hours. Nothing published.")
+    stories = [s for s in fetch_stories() if s["id"] not in history]
+    if not stories:
+        print("SKIP: No unused recent news headline. No post sent.")
         return
-    story = random.SystemRandom().choice(available)
-    print("Chosen news topic:", story["topic"])
-    print("Publisher:", story["publisher"])
-    print("Headline:", story["headline"])
-    post = clean_post(generate_post(story))
-    print("\n=== POST PREVIEW (NO LINKS) ===\n" + post + "\n")
-
+    # Favour recent news, but rotate across BTC / ETH / BNB.
+    story = random.SystemRandom().choice(stories[:min(12, len(stories))])
+    print("News:", story["symbol"], story["headline"], "|", story["publisher"])
+    market = get_market(story["symbol"])
+    print("Market:", market["source"], money(market["price"]), market["quote"], f"{market['change']:+.2f}%")
+    post_text = gemini_post(story, market)
+    print("\n=== CLEAN POST ===\n" + post_text + "\n")
+    picture = create_card(story, market)
     if not PUBLISH:
-        print("TEST MODE: Post generated, not published.")
+        print("TEST MODE: Image and post generated, NOT published.")
         return
-    publish_to_binance(post)
+    post_image(post_text, picture)
     save_history(history, story)
-    print("DONE: Publisher completed; headline saved to history.")
+    print("DONE: Image post publisher completed; headline recorded in history.")
 
 
 if __name__ == "__main__":
