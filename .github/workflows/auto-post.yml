@@ -48,5 +48,5 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           BINANCE_SQUARE_OPENAPI_KEY: ${{ secrets.BINANCE_SQUARE_OPENAPI_KEY }}
           GEMINI_MODEL: gemini-3.5-flash-lite
-          DRY_RUN: ${{ github.event_name == 'schedule' || !inputs.publish }}
+         DRY_RUN: ${{ github.event_name != 'schedule' && !inputs.publish }}
         run: python bot.py
