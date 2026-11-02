@@ -1,4 +1,4 @@
-
+import subprocess
 import os
 import json
 import re
@@ -85,4 +85,29 @@ if not post or len(post) > 1500:
 print("=== AI GENERATED POST ===")
 print(post)
 print("=========================")
-print("TEST MODE: No post has been published.")
+
+# Automatic Binance Square publishing
+DRY_RUN = os.getenv("DRY_RUN", "true").lower() == "true"
+
+if DRY_RUN:
+    print("TEST MODE: Post generated, not published.")
+else:
+    if not os.getenv("BINANCE_SQUARE_OPENAPI_KEY"):
+        raise RuntimeError("Missing Binance Square API Key")
+
+    print("Publishing to Binance Square...", flush=True)
+
+    subprocess.run(
+        [
+            "node",
+            "scripts/post-text.mjs",
+            "--text",
+            post
+        ],
+        cwd="binance-skills-hub/skills/binance/square-post",
+        check=True,
+        timeout=120
+    )
+
+    print("Binance publishing script finished.")
+
