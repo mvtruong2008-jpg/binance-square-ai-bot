@@ -1,12 +1,12 @@
-name: Binance Square AI Bot
+name: Binance Square AI Bot - Image Edition
 
 on:
   workflow_dispatch:
     inputs:
       publish:
-        description: "Publish one real post?"
-        type: boolean
+        description: "Publish one real image post? (unchecked = preview only)"
         required: false
+        type: boolean
         default: false
 
   schedule:
@@ -17,7 +17,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: binance-square-publisher
+  group: binance-square-image-publisher
   cancel-in-progress: false
 
 jobs:
@@ -27,18 +27,22 @@ jobs:
     env:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       BINANCE_SQUARE_OPENAPI_KEY: ${{ secrets.BINANCE_SQUARE_OPENAPI_KEY }}
+      COINGECKO_DEMO_KEY: ${{ secrets.COINGECKO_DEMO_KEY }}
       GEMINI_MODEL: gemini-3.5-flash-lite
-      # Scheduled runs publish; manual runs publish only if checked.
+      # Scheduled runs publish; manually triggered runs preview unless publish box ticked.
       PUBLISH: ${{ github.event_name == 'schedule' || inputs.publish == true }}
 
     steps:
-      - name: Checkout source code
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Install Pillow
+        run: python -m pip install "Pillow>=11,<13"
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -49,19 +53,28 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: data/history.json
-          key: square-post-history-${{ github.run_id }}-${{ github.run_attempt }}
+          key: square-image-history-v1-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            square-post-history-
+            square-image-history-v1-
 
-      - name: Download official Binance publisher
+      - name: Download official Binance Square publisher
         run: git clone --depth 1 https://github.com/binance/binance-skills-hub.git
 
-      - name: Generate and optionally publish
+      - name: Generate card and optionally publish image post
         run: python bot.py
 
-      - name: Save published post history
+      - name: Save history after publishing
         if: success() && env.PUBLISH == 'true'
         uses: actions/cache/save@v4
         with:
           path: data/history.json
-          key: square-post-history-${{ github.run_id }}-${{ github.run_attempt }}
+          key: square-image-history-v1-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Save image preview as downloadable artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: market-card-${{ github.run_id }}
+          path: output/market_card.png
+          retention-days: 3
+          if-no-files-found: ignore
