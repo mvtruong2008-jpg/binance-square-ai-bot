@@ -17,6 +17,7 @@ on:
       - main
     paths:
       - "automation/threads-token-inspect-trigger.txt"
+      - "automation/threads-token-exchange-trigger.txt"
   schedule:
     # Every Sunday at 20:14 UTC (Monday 03:14 Vietnam time).
     # Only active after THREADS_AUTORENEW_ENABLED repository variable is true.
@@ -32,7 +33,7 @@ concurrency:
 jobs:
   maintain_token:
     name: Manage token without exposing credential
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && vars.THREADS_AUTORENEW_ENABLED == 'true') || (github.event_name == 'push' && github.event.head_commit.message == 'trigger:threads-token-inspect') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && vars.THREADS_AUTORENEW_ENABLED == 'true') || (github.event_name == 'push' && (github.event.head_commit.message == 'trigger:threads-token-inspect' || github.event.head_commit.message == 'trigger:threads-token-exchange')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 7
     env:
@@ -56,5 +57,5 @@ jobs:
 
       - name: Inspect / exchange / refresh Threads credential
         env:
-          TOKEN_MODE: ${{ github.event_name == 'schedule' && 'refresh' || github.event_name == 'push' && 'inspect' || inputs.mode }}
+          TOKEN_MODE: ${{ github.event_name == 'schedule' && 'refresh' || github.event_name == 'push' && github.event.head_commit.message == 'trigger:threads-token-exchange' && 'exchange' || github.event_name == 'push' && 'inspect' || inputs.mode }}
         run: python threads-trend-bot/token_manager.py --mode "$TOKEN_MODE"
