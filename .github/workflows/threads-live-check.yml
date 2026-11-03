@@ -44,6 +44,9 @@ jobs:
       - name: Check broader keywords using Meta official minimal search parameters
         run: python -u threads-trend-bot/diagnose_search.py
 
+      - name: Determine Threads keyword result ownership and age - read only
+        run: python -u threads-trend-bot/diagnose_coverage.py
+
       - name: Build genuine Threads-sourced Vietnamese drafts - never publish
         run: python -u threads-trend-bot/trend_bot.py --source api
 
