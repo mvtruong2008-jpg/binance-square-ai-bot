@@ -41,6 +41,9 @@ jobs:
       - name: Check official Threads profile and keyword search - read only
         run: python -u threads-trend-bot/check_api.py
 
+      - name: Check broader keywords using Meta official minimal search parameters
+        run: python -u threads-trend-bot/diagnose_search.py
+
       - name: Build genuine Threads-sourced Vietnamese drafts - never publish
         run: python -u threads-trend-bot/trend_bot.py --source api
 
