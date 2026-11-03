@@ -2,6 +2,21 @@
 
 **ĐÂY LÀ BẢN NHÁP. KHÔNG CÓ LỆNH ĐĂNG LÊN THREADS.**
 
+## Chế độ mới — nghiên cứu đa nguồn công khai, không cần Meta xét duyệt
+
+**Đây là chế độ mặc định.** Dữ liệu đến từ Google Trends VN (cụm từ tìm kiếm), Google News RSS VN, các nguồn RSS công khai của VnExpress (công nghệ, đời sống, giáo dục, kinh doanh) và Hacker News qua Algolia API (thảo luận công nghệ quốc tế). Không sử dụng Threads API trong chế độ này và không cần `THREADS_ACCESS_TOKEN`.
+
+- GitHub Actions sẽ chạy **4 lần/ngày theo lịch UTC** để tạo **2 bản nháp tiếng Việt** nhờ Gemini (nếu nguồn và Gemini hoạt động). Máy tính cá nhân có thể tắt.
+- Chạy tay: Actions → **Threads Trend Bot - Drafts Only** → Run workflow → `source_mode=public`.
+- Bài nguồn là **tiêu đề tin tức hoặc tín hiệu tìm kiếm cộng đồng**, không phải dữ liệu lượt thích, bình luận hay độ viral trên Threads. Không đánh đồng các loại độ phổ biến.
+- Tác giả nguồn và liên kết xuất hiện trong `drafts.md` / `drafts.json`, không đưa link vào phần văn bản bài nháp.
+- Không đăng Threads; không có lệnh đăng công khai; không yêu cầu xác minh doanh nghiệp Meta.
+- Dữ liệu về tin nóng chỉ là tín hiệu để gợi ý chủ đề; phải kiểm tra các tuyên bố thực tế trước khi đăng.
+- RSS có thể thay đổi, gặp giới hạn hay từ chối yêu cầu. Nếu thiếu nguồn phù hợp, workflow sẽ báo lỗi, không tráo nội dung demo thành tin thật.
+- Repository này công khai, tệp kết quả Artifacts có thể bị người khác truy cập; chỉ dùng nội dung công khai.
+
+**Nguồn công khai không đồng nghĩa tự động được phép sao chép toàn bộ bài báo.** Chỉ dùng tiêu đề ngắn cùng link làm tín hiệu, Gemini phải viết góc nhìn độc lập. Tuân thủ điều kiện sử dụng RSS của mỗi nhà cung cấp.
+
 ## Đã xây dựng
 
 - Sử dụng Meta Threads API chính thức để tìm bài TOP và RECENT theo 8 nhóm chủ đề tiếng Việt.
@@ -42,7 +57,7 @@ Dữ liệu demo gồm 16 ví dụ **tự dựng**, không phải bài thật v�
 
 TOP là **thứ tự xếp hạng tìm kiếm Meta**, không phải số liệu lượt thích/lượt xem. Bot không tự tuyên bố bài nào có số lượng tương tác cụ thể nếu API không cung cấp. Nội dung nguồn có thể sai; nên kiểm chứng trước khi đăng.
 
-Workflow tự chạy khi thay đổi thư mục dự án trên main chỉ để tạo demo preview, không tự đăng công khai và không có lịch hẹn giờ.
+Workflow tự chạy khi thay đổi thư mục dự án trên main và theo lịch bốn lần/ngày để tạo bản nháp từ các nguồn công khai. Không đăng công khai.
 
 ## Tệp
 
