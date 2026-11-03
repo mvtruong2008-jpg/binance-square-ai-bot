@@ -1,0 +1,61 @@
+name: Threads AI - Public Trends Auto Publisher
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Explicitly publish ONE original Gemini post to your Threads account?"
+        required: true
+        type: boolean
+        default: false
+  schedule:
+    # Every six hours at 02:47 / 08:47 / 14:47 / 20:47 Vietnam time.
+    # Disabled until a live publication has been verified.
+    - cron: "47 1,7,13,19 * * *"
+  push:
+    branches:
+      - main
+    paths:
+      - "automation/threads-publish-trigger.txt"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: threads-authorized-post-publisher
+  cancel-in-progress: false
+
+jobs:
+  threads_publish:
+    name: Research public trends and publish at most one original Threads post
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && vars.THREADS_AUTOPOST_ENABLED == 'true') || (github.event_name == 'push' && (github.event.head_commit.message == 'trigger:threads-one-preview' || github.event.head_commit.message == 'trigger:threads-one-publish')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
+      GEMINI_MODEL: gemini-3.5-flash-lite
+      THREADS_PUBLISH_MODE: ${{ github.event_name == 'schedule' && 'publish' || (github.event_name == 'workflow_dispatch' && inputs.publish == true) && 'publish' || (github.event_name == 'push' && github.event.head_commit.message == 'trigger:threads-one-publish') && 'publish' || 'preview' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run all Threads offline safety tests
+        run: python -m unittest discover -s threads-trend-bot/tests -v
+
+      - name: Read public news trends, generate with Gemini, and preview/publish
+        run: python -u threads-trend-bot/publish_threads.py --mode "$THREADS_PUBLISH_MODE"
+
+      - name: Upload public draft or confirmation (never secrets)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: threads-publisher-result-${{ github.run_id }}
+          path: |
+            threads-trend-bot/output/publish_preview.json
+            threads-trend-bot/output/publish_result.json
+          retention-days: 3
+          if-no-files-found: ignore
