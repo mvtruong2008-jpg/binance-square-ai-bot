@@ -1,0 +1,2 @@
+# Read-only Threads token profile check. No tokens or personal information stored here.
+request: one-time-safe-inspect-2026-11-03
