@@ -1,4 +1,4 @@
 purpose: one-time-threads-api-check
-state: validate-minimal-keyword-search-20261103-evening
+state: diagnose-public-ownership-v2-20261103
 # This marker never contains token material.
 # Only an exact commit message trigger:threads-live-check invokes API real tests.
