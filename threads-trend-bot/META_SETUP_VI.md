@@ -2,6 +2,14 @@
 
 **Tài liệu Threads API KHÔNG phải API token.** Chỉ chủ tài khoản có thể đăng nhập Meta, cấp quyền và tạo token.
 
+## Phân biệt App Secret và User Access Token
+
+- **Threads App ID**: mã định danh ứng dụng, không dùng để đọc bài Threads thay mặt người dùng.
+- **Threads App Secret**: khóa bí mật của ứng dụng (thường có dạng 32 ký tự hexadecimal), không phải user access token. Tuyệt đối không dán khóa này vào THREADS_ACCESS_TOKEN.
+- **Threads User Access Token**: token cấp sau Threads Login / User Token Generator, gắn với tài khoản và quyền đã cấp. Đây mới là khóa để chạy chế độ `source_mode=api`.
+
+Nếu App Secret từng được dán vào chat hoặc nơi không dành cho lưu trữ bí mật, hãy **Rotate / Reset App Secret** trong Meta Dashboard, rồi cập nhật chỗ đang sử dụng. Chúng tôi không đưa chuỗi bí mật người dùng gửi vào mã nguồn, workflow hoặc log GitHub.
+
 ## Bước 1 — Tạo Meta Threads App
 
 1. Đăng nhập https://developers.facebook.com/apps/.
