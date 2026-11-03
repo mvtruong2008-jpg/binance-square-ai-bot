@@ -1,0 +1,7 @@
+# Safe external trigger for the official Threads AI publisher.
+# This file contains no API credentials and does not itself publish anything.
+# One public post is attempted ONLY with exact commit message:
+# trigger:threads-one-publish
+# A nonpublishing test uses exact message:
+# trigger:threads-one-preview
+state: initial
