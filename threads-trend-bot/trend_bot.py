@@ -17,6 +17,8 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from check_api import ensure_user_access_token
+
 API_ROOT = "https://graph.threads.net/v1.0"
 GEMINI_ROOT = "https://generativelanguage.googleapis.com/v1beta/models"
 MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
@@ -90,6 +92,7 @@ def fetch_threads_posts(token: str, reference_time: datetime):
             "SOURCE_MODE=api cần GitHub Secret THREADS_ACCESS_TOKEN có quyền "
             "threads_basic và threads_keyword_search được Meta phê duyệt."
         )
+    token = ensure_user_access_token(token)
     results = []
     failures = []
     for topic in TOPICS:

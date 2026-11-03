@@ -25,6 +25,16 @@ class ReadOnlyApiTests(unittest.TestCase):
                 checker.get_json("/me", "")
             get.assert_not_called()
 
+    def test_app_secret_shape_is_rejected_before_network(self):
+        fake_32_hex = "a" * 32
+        with patch("urllib.request.urlopen") as request:
+            with self.assertRaisesRegex(RuntimeError, "LIKELY_APP_SECRET"):
+                checker.get_json("/me", fake_32_hex)
+            request.assert_not_called()
+
+    def test_nonsecret_synthetic_token_is_not_rejected(self):
+        self.assertEqual(checker.ensure_user_access_token(" synthetic-USER-TOKEN "), "synthetic-USER-TOKEN")
+
     def test_missing_secret_has_clear_status(self):
         with patch.dict(os.environ, {"THREADS_ACCESS_TOKEN": ""}):
             with redirect_stdout(io.StringIO()) as output:
