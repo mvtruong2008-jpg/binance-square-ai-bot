@@ -57,9 +57,30 @@ def graph_get(path: str, params: dict) -> dict:
         with urllib.request.urlopen(request, timeout=30) as response:
             value = json.load(response)
     except urllib.error.HTTPError as exc:
-        # Never print URL: GET query includes access_token and possibly client_secret.
+        # NEVER print URL, headers, raw error body or Meta's free-text error message:
+        # GET query contains an access token and potentially the Threads App Secret.
+        try:
+            payload = json.loads(exc.read(8192).decode("utf-8"))
+            detail = payload.get("error", {}) if isinstance(payload, dict) else {}
+            if not isinstance(detail, dict):
+                detail = {}
+            code = detail.get("code")
+            subcode = detail.get("error_subcode")
+            numeric_code = int(code) if isinstance(code, int) else None
+            numeric_subcode = int(subcode) if isinstance(subcode, int) else None
+        except (ValueError, TypeError, OSError, UnicodeDecodeError):
+            numeric_code, numeric_subcode = None, None
+        # Numeric Meta codes are safe diagnostics; arbitrary response strings are not.
+        detail_code = f" meta_code={numeric_code}" if numeric_code is not None else ""
+        detail_subcode = f" meta_subcode={numeric_subcode}" if numeric_subcode is not None else ""
+        cause = (
+            "THREADS_USER_TOKEN_INVALID_OR_EXPIRED" if numeric_code == 190 else
+            "META_BAD_PARAMETER: Check Threads App Secret vs Facebook App Secret, "
+            "and that token belongs to the same Threads app" if numeric_code == 100 else
+            "META_REJECTED_EXCHANGE: Check token age, app-specific Threads secret, and permissions"
+        )
         raise TokenManagerError(
-            f"META_HTTP_{exc.code}: Token rejected/expired or app permission not granted."
+            f"META_HTTP_{exc.code}{detail_code}{detail_subcode}: {cause}."
         ) from None
     except (urllib.error.URLError, TimeoutError):
         raise TokenManagerError("META_CONNECTION_ERROR: Threads API could not be reached.") from None
@@ -182,6 +203,12 @@ def manage_token(mode: str):
     # Failure here means no new Meta token is issued and potentially lost.
     public_key = fetch_secret_public_key(gh_pat, repo)
     if mode == "exchange":
+        # A valid user token can access /me. Run this before the exchange to
+        # distinguish token validity from a mismatched Threads App Secret.
+        profile = threads_get_json("/me", current, {"fields": "id,username"})
+        if not isinstance(profile, dict) or not profile.get("id"):
+            raise TokenManagerError("SHORT_TOKEN_PROFILE_UNAVAILABLE.")
+        print("TOKEN_PROFILE_OK: Current short-lived token can access Threads /me.")
         app_secret = require_env("THREADS_APP_SECRET")
         new_token, lifetime = exchange_short_token(current, app_secret)
     else:
