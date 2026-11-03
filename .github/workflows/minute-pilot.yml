@@ -1,0 +1,82 @@
+name: Binance Square 24 Coin - Minute Pilot
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish up to 5 REAL public posts? Leave unchecked for preview."
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: binance-minute-pilot
+  cancel-in-progress: false
+
+jobs:
+  pilot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      BINANCE_SQUARE_OPENAPI_KEY: ${{ secrets.BINANCE_SQUARE_OPENAPI_KEY }}
+      COINGECKO_DEMO_KEY: ${{ secrets.COINGECKO_DEMO_KEY }}
+      GEMINI_MODEL: gemini-3.5-flash-lite
+      PUBLISH: ${{ inputs.publish == true }}
+      ALLOW_MARKET_ONLY: "true"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Pillow
+        run: python -m pip install "Pillow>=11,<13"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Download official Binance Square publisher
+        run: git clone --depth 1 https://github.com/binance/binance-skills-hub.git
+
+      - name: Try five distinct coins at least a minute apart
+        shell: bash
+        run: |
+          set -uo pipefail
+          coins=(SOL XRP AVAX LINK SUI)
+          failures=0
+          for i in "${!coins[@]}"; do
+            echo "::group::Attempt $((i + 1))/5 - ${coins[$i]}"
+            start=$(date +%s)
+            if PILOT_SYMBOL="${coins[$i]}" python pilot_bot.py; then
+              echo "Attempt $((i + 1)) succeeded"
+            else
+              echo "::error::Attempt $((i + 1)) failed"
+              failures=$((failures + 1))
+            fi
+            echo "::endgroup::"
+            if (( i < 4 )); then
+              elapsed=$(( $(date +%s) - start ))
+              if (( elapsed < 60 )); then sleep $((60 - elapsed)); fi
+            fi
+          done
+          echo "PILOT SUMMARY: attempts=5 failures=$failures publish=$PUBLISH"
+          if (( failures > 0 )); then exit 1; fi
+
+      - name: Upload preview images
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coin-preview-${{ github.run_id }}
+          path: output/market_card_*.png
+          if-no-files-found: ignore
+          retention-days: 3
