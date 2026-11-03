@@ -100,7 +100,6 @@ def fetch_threads_posts(token: str, reference_time: datetime):
             params = {
                 "q": topic, "search_type": search_type, "search_mode": "KEYWORD",
                 "fields": FIELDS, "limit": 12,
-                "since": int((reference_time - timedelta(hours=MAX_AGE_HOURS)).timestamp()),
             }
             try:
                 response = threads_get_json("/keyword_search", token, params)
@@ -114,8 +113,9 @@ def fetch_threads_posts(token: str, reference_time: datetime):
                 failures.append(f"{topic}/{search_type}: {exc}")
     if not results:
         raise RuntimeError(
-            "Threads không trả về bài hợp lệ. Có thể ứng dụng chưa được phê duyệt "
-            "tìm kiếm công khai hoặc token hết hạn. Chi tiết: " + "; ".join(failures[:3])
+            "Threads không trả về bài nguồn từ tìm kiếm. Token có thể hợp lệ nhưng "
+            "App chưa được Meta phê duyệt quyền threads_keyword_search để tìm bài công khai. "
+            "Chi tiết truy vấn: " + ("; ".join(failures[:3]) if failures else "API trả về data=[] cho các truy vấn")
         )
     if failures:
         print(f"Cảnh báo: {len(failures)} truy vấn Threads không thành công.", file=sys.stderr)
