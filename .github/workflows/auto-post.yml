@@ -10,7 +10,7 @@ on:
         default: false
 
   schedule:
-    - cron: "7,37 * * * *"
+    - cron: "17,47 * * * *"
       timezone: "Asia/Ho_Chi_Minh"
 
 permissions:
@@ -60,6 +60,12 @@ jobs:
       - name: Download official Binance Square publisher
         run: git clone --depth 1 https://github.com/binance/binance-skills-hub.git
 
+      - name: Print trigger diagnostics
+        run: |
+          echo "TRIGGER_EVENT=${{ github.event_name }}"
+          echo "SCHEDULE_EXPRESSION=${{ github.event.schedule }}"
+          echo "PUBLISH=$PUBLISH"
+          echo "RUN_ID=${{ github.run_id }}"
       - name: Generate card and optionally publish image post
         run: python bot.py
 
