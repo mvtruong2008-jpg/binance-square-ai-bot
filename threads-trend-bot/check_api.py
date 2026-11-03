@@ -32,36 +32,53 @@ def ensure_user_access_token(token: str) -> str:
 
 
 def get_json(path: str, token: str, params=None) -> dict:
+    """Threads Graph authentication supports bearer and access_token parameter.
+
+    A 401 with bearer is retried ONCE using the documented Graph query parameter.
+    No generated URL, token, or raw server body is ever logged.
+    """
     token = ensure_user_access_token(token)
     if path not in ("/me", "/keyword_search"):
         raise ValueError("Only read-only Threads API endpoints are allowed.")
-    url = GRAPH_ROOT + path
-    if params:
-        url += "?" + urllib.parse.urlencode(params)
-    request = urllib.request.Request(url, headers={
-        "Authorization": "Bearer " + token,
-        "User-Agent": "ThreadsTrendBotCredentialCheck/1.0",
-        "Accept": "application/json",
-    }, method="GET")
-    try:
-        with urllib.request.urlopen(request, timeout=25) as response:
-            data = json.load(response)
-    except urllib.error.HTTPError as exc:
-        if exc.code in (400, 401):
-            raise RuntimeError(f"THREADS_AUTH_FAILED: HTTP {exc.code}. Check Threads token and authorization.") from None
-        if exc.code == 403:
-            raise RuntimeError("THREADS_PERMISSION_DENIED: HTTP 403. App review or search scope may be required.") from None
-        if exc.code == 429:
-            raise RuntimeError("THREADS_RATE_LIMITED: API query limit reached.") from None
-        raise RuntimeError(f"THREADS_API_ERROR: HTTP {exc.code}.") from None
-    except (urllib.error.URLError, TimeoutError):
-        raise RuntimeError("THREADS_NETWORK_ERROR: Could not reach graph.threads.net.") from None
-    if not isinstance(data, dict):
-        raise RuntimeError("THREADS_RESPONSE_ERROR: Unexpected JSON response.")
-    if "error" in data:
-        raise RuntimeError("THREADS_RESPONSE_ERROR: Threads returned an error.")
-    return data
 
+    for transport in ("bearer", "query"):
+        options = dict(params or {})
+        headers = {
+            "User-Agent": "ThreadsTrendBotCredentialCheck/1.1",
+            "Accept": "application/json",
+        }
+        if transport == "query":
+            options["access_token"] = token
+        else:
+            headers["Authorization"] = "Bearer " + token
+        url = GRAPH_ROOT + path + ("?" + urllib.parse.urlencode(options) if options else "")
+        request = urllib.request.Request(url, headers=headers, method="GET")
+        try:
+            with urllib.request.urlopen(request, timeout=25) as response:
+                data = json.load(response)
+        except urllib.error.HTTPError as exc:
+            if exc.code == 401 and transport == "bearer":
+                print("AUTH_TRANSPORT_RETRY: bearer rejected; testing Graph access_token parameter.")
+                continue
+            if exc.code in (400, 401):
+                raise RuntimeError(
+                    f"THREADS_AUTH_FAILED: HTTP {exc.code}; token invalid/expired or Meta authorization rejected."
+                ) from None
+            if exc.code == 403:
+                raise RuntimeError(
+                    "THREADS_PERMISSION_DENIED: HTTP 403; app review or search scope may be required."
+                ) from None
+            if exc.code == 429:
+                raise RuntimeError("THREADS_RATE_LIMITED: API query limit reached.") from None
+            raise RuntimeError(f"THREADS_API_ERROR: HTTP {exc.code}.") from None
+        except (urllib.error.URLError, TimeoutError):
+            raise RuntimeError("THREADS_NETWORK_ERROR: Could not reach graph.threads.net.") from None
+        if not isinstance(data, dict):
+            raise RuntimeError("THREADS_RESPONSE_ERROR: Unexpected JSON response.")
+        if "error" in data:
+            raise RuntimeError("THREADS_RESPONSE_ERROR: Threads returned an error.")
+        return data
+    raise RuntimeError("THREADS_AUTH_FAILED: No supported authentication transport succeeded.")
 
 def main():
     token = os.getenv("THREADS_ACCESS_TOKEN", "").strip()
