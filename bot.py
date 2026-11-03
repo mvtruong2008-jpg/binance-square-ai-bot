@@ -31,32 +31,9 @@ COINS = {
     "BTC": {"name": "Bitcoin", "query": "Bitcoin cryptocurrency when:2d", "gecko": "bitcoin", "color": "#F7931A"},
     "ETH": {"name": "Ethereum", "query": "Ethereum cryptocurrency when:2d", "gecko": "ethereum", "color": "#7E91ED"},
     "BNB": {"name": "BNB", "query": "BNB Chain cryptocurrency when:2d", "gecko": "binancecoin", "color": "#F3BA2F"},
-
-    "SOL": {"name":"Solana","query":"Solana SOL cryptocurrency","gecko":"solana","color":"#9271E9"},
-    "XRP": {"name":"XRP","query":"XRP Ripple cryptocurrency","gecko":"ripple","color":"#A7BCD0"},
-    "DOGE":{"name":"Dogecoin","query":"Dogecoin DOGE cryptocurrency","gecko":"dogecoin","color":"#C6A858"},
-    "ADA": {"name":"Cardano","query":"Cardano ADA cryptocurrency","gecko":"cardano","color":"#4E9BE9"},
-    "AVAX":{"name":"Avalanche","query":"Avalanche AVAX crypto","gecko":"avalanche-2","color":"#E84142"},
-    "LINK":{"name":"Chainlink","query":"Chainlink LINK crypto","gecko":"chainlink","color":"#2A5ADA"},
-    "DOT": {"name":"Polkadot","query":"Polkadot DOT cryptocurrency","gecko":"polkadot","color":"#E6007A"},
-    "LTC": {"name":"Litecoin","query":"Litecoin LTC crypto","gecko":"litecoin","color":"#345D9D"},
-    "UNI": {"name":"Uniswap","query":"Uniswap UNI crypto","gecko":"uniswap","color":"#FF5AB3"},
-    "AAVE":{"name":"Aave","query":"Aave AAVE DeFi cryptocurrency","gecko":"aave","color":"#9E68BF"},
-    "SUI": {"name":"Sui","query":"Sui Network SUI crypto","gecko":"sui","color":"#6FBCF0"},
-    "NEAR":{"name":"NEAR Protocol","query":"NEAR Protocol crypto","gecko":"near","color":"#FFFFFF"},
-    "TRX": {"name":"TRON","query":"TRON TRX crypto","gecko":"tron","color":"#E34B5E"},
-    "ATOM":{"name":"Cosmos","query":"Cosmos ATOM cryptocurrency","gecko":"cosmos","color":"#5065A0"},
-    "ARB": {"name":"Arbitrum","query":"Arbitrum ARB crypto","gecko":"arbitrum","color":"#56A0E8"},
-    "OP":  {"name":"Optimism","query":"Optimism OP blockchain crypto","gecko":"optimism","color":"#FF0420"},
-    "FIL": {"name":"Filecoin","query":"Filecoin FIL cryptocurrency","gecko":"filecoin","color":"#0090FF"},
-    "XLM": {"name":"Stellar","query":"Stellar XLM crypto","gecko":"stellar","color":"#F2F2F2"},
-    "HBAR":{"name":"Hedera","query":"Hedera HBAR cryptocurrency","gecko":"hedera-hashgraph","color":"#A9B2C2"},
-    "APT": {"name":"Aptos","query":"Aptos APT crypto","gecko":"aptos","color":"#29B394"},
-    "ETC": {"name":"Ethereum Classic","query":"Ethereum Classic ETC crypto","gecko":"ethereum-classic","color":"#4A9A73"},
 }
 HISTORY = Path("data/history.json")
-PILOT_SYMBOL = os.getenv("PILOT_SYMBOL", "").strip().upper()
-OUTPUT = Path("output") / (f"market_card_{PILOT_SYMBOL.lower()}.png" if PILOT_SYMBOL else "market_card.png")
+OUTPUT = Path("output/market_card.png")
 BINANCE_SKILL = Path("binance-skills-hub/skills/binance/square-post")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
 PUBLISH = os.getenv("PUBLISH", "false").lower() in ("1", "true", "yes")
@@ -71,22 +48,12 @@ def get_json(url, headers=None, timeout=30):
         raise RuntimeError(f"Market/News HTTP {error.code} from {urllib.parse.urlparse(url).netloc}") from error
 
 
-def choose_symbols(history):
-    """Choose less-recently posted coins; the pilot can force one coin."""
-    if PILOT_SYMBOL:
-        if PILOT_SYMBOL not in COINS:
-            raise RuntimeError("Unsupported PILOT_SYMBOL: " + PILOT_SYMBOL)
-        return [PILOT_SYMBOL]
-    return sorted(COINS, key=lambda sym: (str(history.get("symbol:" + sym, "")), sym))[:6]
-
-
-def fetch_stories(symbols):
+def fetch_stories():
     """Read RSS titles, not full articles. URLs stay out of public posts."""
     now = datetime.now(timezone.utc)
     stories = {}
-    for symbol in symbols:
-        coin = COINS[symbol]
-        query = urllib.parse.quote(coin["query"] + " when:2d")
+    for symbol, coin in COINS.items():
+        query = urllib.parse.quote(coin["query"])
         url = f"https://news.google.com/rss/search?q={query}&hl=en-US&gl=US&ceid=US:en"
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
@@ -135,7 +102,6 @@ def load_history():
 def save_history(history, story):
     now = datetime.now(timezone.utc)
     history[story["id"]] = now.isoformat()
-    history["symbol:" + story["symbol"]] = now.isoformat()
     cutoff = now - timedelta(days=14)
     cleaned = {}
     for key, stamp in history.items():
@@ -215,8 +181,7 @@ Publisher as listed by RSS: {story['publisher']}
 Headline published at UTC: {story['date']}
 Current {market['source']} market snapshot: {market['price']:.8g} {market['quote']}, 24-hour change {market['change']:+.2f}%.
 Rules:
-- Treat RSS headlines as attributed reports, NOT confirmed facts.
-- When the headline is a MARKET SNAPSHOT, discuss only the live market data; do not invent events or reports.
+- Treat the headline as a report attributed to the publisher, NOT verified fact.
 - Do not fabricate causes, events, price predictions, specific claims or quotes.
 - If mentioning the market snapshot, explicitly treat it as CURRENT, not at publication time.
 - At most TWO crypto cashtags (e.g. $BTC). Optional 1 relevant hashtag.
@@ -404,31 +369,13 @@ def main():
     if "--demo" in sys.argv:
         demo()
         return
-    if "--list-coins" in sys.argv:
-        print(", ".join(COINS))
-        return
     history = load_history()
-    symbols = choose_symbols(history)
-    print("Coin candidates:", ", ".join(symbols))
-    stories = [item for item in fetch_stories(symbols) if item["id"] not in history]
-    if stories:
-        order = {symbol: i for i, symbol in enumerate(symbols)}
-        stories.sort(key=lambda item: (order[item["symbol"]], -datetime.fromisoformat(item["date"]).timestamp()))
-        story = stories[0]
-    elif os.getenv("ALLOW_MARKET_ONLY", "false").lower() == "true":
-        symbol = symbols[0]
-        now = datetime.now(timezone.utc)
-        story = dict(
-            id="market:" + symbol + ":" + now.strftime("%Y%m%d%H%M"),
-            symbol=symbol,
-            headline=COINS[symbol]["name"] + " market snapshot",
-            publisher="Live market data (not a news event)",
-            date=now.isoformat(),
-        )
-        print("Market-only fallback: no recent unused RSS headline")
-    else:
+    stories = [s for s in fetch_stories() if s["id"] not in history]
+    if not stories:
         print("SKIP: No unused recent news headline. No post sent.")
         return
+    # Favour recent news, but rotate across BTC / ETH / BNB.
+    story = random.SystemRandom().choice(stories[:min(12, len(stories))])
     print("News:", story["symbol"], story["headline"], "|", story["publisher"])
     market = get_market(story["symbol"])
     print("Market:", market["source"], money(market["price"]), market["quote"], f"{market['change']:+.2f}%")
