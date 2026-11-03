@@ -2,6 +2,10 @@
 
 **ĐÂY LÀ BẢN NHÁP. KHÔNG CÓ LỆNH ĐĂNG LÊN THREADS.**
 
+## Tùy chọn đăng bài thật lên tài khoản Threads
+
+**Đã thêm công cụ đăng bài công khai qua Threads API chính thức**: xem [THREADS_AUTOPUBLISH_VI.md](../THREADS_AUTOPUBLISH_VI.md). Quyền đăng là `threads_content_publish` và khác với quyền tìm kiếm `threads_keyword_search`. Mỗi lượt chỉ tối đa 1 bài gốc; có giãn cách, chống trùng và kiểm thử không đăng trước khi sử dụng thật. Chỉ hoạt động sau khi chủ tài khoản ủy quyền đúng quyền đăng.
+
 ## Chế độ mới — nghiên cứu đa nguồn công khai, không cần Meta xét duyệt
 
 **Đây là chế độ mặc định.** Dữ liệu đến từ Google Trends VN (cụm từ tìm kiếm), Google News RSS VN, các nguồn RSS công khai của VnExpress (công nghệ, đời sống, giáo dục, kinh doanh) và Hacker News qua Algolia API (thảo luận công nghệ quốc tế). Không sử dụng Threads API trong chế độ này và không cần `THREADS_ACCESS_TOKEN`.
