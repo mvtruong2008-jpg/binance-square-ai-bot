@@ -266,16 +266,52 @@ def generate_with_gemini(sources, api_key, source_mode='api'):
         "Dữ liệu nghiên cứu:\n" + json.dumps(research, ensure_ascii=False)
     )
     endpoint = f"{GEMINI_ROOT}/{urllib.parse.quote(MODEL, safe='')}:generateContent"
-    data = request_json(
-        endpoint, payload={"contents": [{"parts": [{"text": instruction}]}],
-                           "generationConfig": {"temperature": 0.65}},
-        headers={"Content-Type": "application/json", "x-goog-api-key": api_key}, timeout=90
+    configuration = {
+        "temperature": 0.5,
+        "maxOutputTokens": 2048,
+        "responseMimeType": "application/json",
+        "responseSchema": {
+            "type": "OBJECT",
+            "properties": {
+                "drafts": {
+                    "type": "ARRAY",
+                    "items": {
+                        "type": "OBJECT",
+                        "properties": {
+                            "topic": {"type": "STRING"},
+                            "angle": {"type": "STRING"},
+                            "text": {"type": "STRING"},
+                        },
+                        "required": ["topic", "angle", "text"],
+                    },
+                    "minItems": 2,
+                    "maxItems": 2,
+                },
+            },
+            "required": ["drafts"],
+        },
+    }
+    last_error = None
+    for attempt in range(2):
+        data = request_json(
+            endpoint,
+            payload={"contents": [{"parts": [{"text": instruction}]}],
+                     "generationConfig": configuration},
+            headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
+            timeout=90,
+        )
+        try:
+            answer = "".join(
+                part.get("text", "") for part in data["candidates"][0]["content"]["parts"]
+            )
+            return extract_gemini_json(answer)
+        except (ValueError, json.JSONDecodeError, KeyError, IndexError, TypeError) as exc:
+            last_error = type(exc).__name__
+            print(f"GEMINI_JSON_RETRY: response format invalid (attempt {attempt + 1}/2).",
+                  file=sys.stderr)
+    raise RuntimeError(
+        f"Gemini không tạo được JSON hợp lệ sau 2 lần thử ({last_error})."
     )
-    try:
-        answer = "".join(part.get("text", "") for part in data["candidates"][0]["content"]["parts"])
-    except (KeyError, IndexError, TypeError) as exc:
-        raise RuntimeError("Gemini không tạo được nội dung bản nháp.") from exc
-    return extract_gemini_json(answer)
 
 
 def write_results(out_dir: Path, sources, drafts, *, source_mode, engine):
