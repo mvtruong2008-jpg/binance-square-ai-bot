@@ -1,0 +1,3 @@
+# One-time owner-authorized Threads token exchange diagnostic
+# No credentials are stored here. The GitHub Actions workflow reads encrypted Secrets.
+request: safe-exchange-2026-11-03
