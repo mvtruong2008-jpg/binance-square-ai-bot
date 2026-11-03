@@ -1,0 +1,4 @@
+purpose: one-time-threads-api-check
+state: prepared
+# This marker never contains token material.
+# Only an exact commit message trigger:threads-live-check invokes API real tests.

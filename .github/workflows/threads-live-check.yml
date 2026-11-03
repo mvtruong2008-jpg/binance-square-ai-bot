@@ -1,0 +1,54 @@
+name: Threads Live API - Safe One-Time Verification and Drafts
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "automation/threads-live-check-trigger.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: threads-live-one-time-check
+  cancel-in-progress: false
+
+jobs:
+  live_check:
+    name: Verify real Threads access then create drafts
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.head_commit.message == 'trigger:threads-live-check' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_MODEL: gemini-3.5-flash-lite
+
+    steps:
+      - name: Checkout trusted repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run offline Threads tests
+        run: python -m unittest discover -s threads-trend-bot/tests -v
+
+      - name: Check official Threads profile and keyword search - read only
+        run: python -u threads-trend-bot/check_api.py
+
+      - name: Build genuine Threads-sourced Vietnamese drafts - never publish
+        run: python -u threads-trend-bot/trend_bot.py --source api
+
+      - name: Upload drafts (public repository - do not include private data)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: threads-real-drafts-${{ github.run_id }}
+          path: threads-trend-bot/output/
+          retention-days: 3
+          if-no-files-found: error
