@@ -1,0 +1,55 @@
+name: Threads Token Manager - Encrypted Rotation
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "inspect = read-only; exchange = 1h token to 60d; refresh = extend 60d token"
+        type: choice
+        required: true
+        options:
+          - inspect
+          - exchange
+          - refresh
+        default: inspect
+  schedule:
+    # Every Sunday at 20:14 UTC (Monday 03:14 Vietnam time).
+    # Only active after THREADS_AUTORENEW_ENABLED repository variable is true.
+    - cron: "14 20 * * 0"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: threads-token-manager
+  cancel-in-progress: false
+
+jobs:
+  maintain_token:
+    name: Manage token without exposing credential
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.THREADS_AUTORENEW_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    env:
+      THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
+      THREADS_APP_SECRET: ${{ secrets.THREADS_APP_SECRET }}
+      GH_SECRETS_PAT: ${{ secrets.GH_SECRETS_PAT }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install sealed-box crypto dependency
+        run: python -m pip install --quiet pynacl
+
+      - name: Run offline token-management security tests
+        run: python -m unittest discover -s threads-trend-bot/tests -v
+
+      - name: Inspect / exchange / refresh Threads credential
+        env:
+          TOKEN_MODE: ${{ github.event_name == 'schedule' && 'refresh' || inputs.mode }}
+        run: python threads-trend-bot/token_manager.py --mode "$TOKEN_MODE"

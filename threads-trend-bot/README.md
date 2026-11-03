@@ -15,6 +15,10 @@
 
 Xem hướng dẫn từng bước: [META_SETUP_VI.md](META_SETUP_VI.md). Không gửi access token qua chat; chỉ lưu bằng GitHub Actions Secret `THREADS_ACCESS_TOKEN`.
 
+## Tự động gia hạn Threads Token và tạo bản nháp theo lịch
+
+Xem [TOKEN_MANAGER_VI.md](TOKEN_MANAGER_VI.md) để đổi token 1 giờ thành dài hạn 60 ngày, tự refresh mỗi tuần (cần GitHub PAT có quyền Secrets) và tùy chọn bật tạo bản nháp API thật 4 lần/ngày. Chưa tự đăng công khai.
+
 ## Chạy thử DEMO ngay
 
 1. GitHub → Actions → Threads Trend Bot - Drafts Only.

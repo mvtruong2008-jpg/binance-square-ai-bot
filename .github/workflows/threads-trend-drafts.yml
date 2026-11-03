@@ -17,6 +17,9 @@ on:
     paths:
       - "threads-trend-bot/**"
       - ".github/workflows/threads-trend-drafts.yml"
+  schedule:
+    # Four daily read-only research windows; only opt-in after valid Meta API approval.
+    - cron: "19 1,7,13,19 * * *"
 
 permissions:
   contents: read
@@ -28,6 +31,7 @@ concurrency:
 jobs:
   draft_preview:
     name: Create Vietnamese drafts without publishing
+    if: ${{ github.event_name != 'schedule' || vars.THREADS_DRAFT_SCHEDULE_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -44,7 +48,7 @@ jobs:
 
       - name: Research trends and generate draft files
         env:
-          SOURCE_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.source_mode || 'demo' }}
+          SOURCE_MODE: ${{ github.event_name == 'schedule' && 'api' || (github.event_name == 'workflow_dispatch' && inputs.source_mode || 'demo') }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
           GEMINI_MODEL: gemini-3.5-flash-lite
