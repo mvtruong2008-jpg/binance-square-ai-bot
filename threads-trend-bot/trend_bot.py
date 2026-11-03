@@ -17,7 +17,7 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from check_api import ensure_user_access_token
+from check_api import ensure_user_access_token, get_json as threads_get_json
 
 API_ROOT = "https://graph.threads.net/v1.0"
 GEMINI_ROOT = "https://generativelanguage.googleapis.com/v1beta/models"
@@ -97,16 +97,13 @@ def fetch_threads_posts(token: str, reference_time: datetime):
     failures = []
     for topic in TOPICS:
         for search_type in ("TOP", "RECENT"):
-            params = urllib.parse.urlencode({
+            params = {
                 "q": topic, "search_type": search_type, "search_mode": "KEYWORD",
                 "fields": FIELDS, "limit": 12,
                 "since": int((reference_time - timedelta(hours=MAX_AGE_HOURS)).timestamp()),
-            })
+            }
             try:
-                response = request_json(
-                    f"{API_ROOT}/keyword_search?{params}",
-                    headers={"Authorization": f"Bearer {token}"}
-                )
+                response = threads_get_json("/keyword_search", token, params)
                 for rank, row in enumerate(response.get("data", [])):
                     if not isinstance(row, dict):
                         continue

@@ -35,6 +35,32 @@ class ReadOnlyApiTests(unittest.TestCase):
     def test_nonsecret_synthetic_token_is_not_rejected(self):
         self.assertEqual(checker.ensure_user_access_token(" synthetic-USER-TOKEN "), "synthetic-USER-TOKEN")
 
+    def test_http_401_retries_graph_query_auth_without_logging_token(self):
+        import urllib.error
+        import urllib.parse
+        synthetic = "SYNTHETIC-USER-TOKEN"
+        unauthorized = urllib.error.HTTPError("https://graph.threads.net/v1.0/me", 401, "Unauthorized", None, None)
+        with patch("urllib.request.urlopen", side_effect=[unauthorized, io.BytesIO(b'{"id":"123"}')]) as transport:
+            with redirect_stdout(io.StringIO()) as output:
+                data = checker.get_json("/me", synthetic, {"fields": "id"})
+        self.assertEqual(data["id"], "123")
+        self.assertEqual(transport.call_count, 2)
+        first = transport.call_args_list[0].args[0]
+        second = transport.call_args_list[1].args[0]
+        self.assertNotIn(synthetic, first.full_url)
+        self.assertIn("access_token=" + urllib.parse.quote(synthetic), second.full_url)
+        self.assertNotIn(synthetic, output.getvalue())
+
+    def test_http_401_both_auth_methods_fail_without_secret_in_error(self):
+        import urllib.error
+        synthetic = "SYNTHETIC-USER-TOKEN"
+        err = urllib.error.HTTPError("https://graph.threads.net/v1.0/me", 401, "Unauthorized", None, None)
+        with patch("urllib.request.urlopen", side_effect=[err, err]) as transport:
+            with self.assertRaisesRegex(RuntimeError, "THREADS_AUTH_FAILED") as raised:
+                checker.get_json("/me", synthetic, {"fields": "id"})
+        self.assertNotIn(synthetic, str(raised.exception))
+        self.assertEqual(transport.call_count, 2)
+
     def test_missing_secret_has_clear_status(self):
         with patch.dict(os.environ, {"THREADS_ACCESS_TOKEN": ""}):
             with redirect_stdout(io.StringIO()) as output:
