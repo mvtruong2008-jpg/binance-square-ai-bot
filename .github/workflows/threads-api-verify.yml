@@ -1,0 +1,31 @@
+name: Threads API - Verify Connection (Read Only)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify_threads:
+    name: Check token and Threads keyword search
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify syntax and offline tests
+        run: |
+          python -m py_compile threads-trend-bot/check_api.py
+          python -m unittest discover -s threads-trend-bot/tests -v
+
+      - name: Verify authorized Threads profile and read-only search
+        run: python threads-trend-bot/check_api.py
