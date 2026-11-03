@@ -16,7 +16,7 @@
 <section id="english" lang="en"><span class="lang">English</span>
 <h2>1. Application and operator</h2>
 <p><strong>automation thread</strong> is a small development-stage application that uses the official Meta Threads API to research public posts by keyword and assist with preparing new Vietnamese-language draft posts. Its source code is maintained by the GitHub account <a href="https://github.com/mvtruong2008-jpg">mvtruong2008-jpg</a>. Meta app ID: <strong>1109750755284751</strong>.</p>
-<p class="notice"><strong>Current scope:</strong> The bot only researches and creates drafts. It does not automatically publish Threads posts, reply, like, follow, or sell information. A user's Threads account must authorize the API integration for authenticated features.</p>
+<p class="notice"><strong>Current scope:</strong> The application researches topics and creates drafts. If explicitly enabled by the owner and granted the Threads publishing permission, it can publish original text posts to that owner's authorized Threads account. It does not automatically reply, like, follow or sell information. The owner must authorize the API integration.</p>
 <h2>2. Information used</h2>
 <ul>
 <li><strong>Authorized Threads account:</strong> Threads user ID, username, authorization status, and the access token required to request API data.</li>
@@ -26,7 +26,7 @@
 </ul>
 <p>We do not request your Threads password. The tool does not intentionally collect private messages, contact lists, payment details or sensitive profile attributes.</p>
 <h2>3. Why the data is used</h2>
-<p>To verify permission to use the Threads API; search and evaluate permitted Threads keyword results; identify timely topics; generate original draft posts with AI; detect duplicates; provide troubleshooting summaries; and maintain access tokens when the owner enables token-management functionality.</p>
+<p>To verify Threads API permissions; research public topic signals and permitted Threads keyword search; generate original AI-assisted draft posts; optionally publish owner-authorized posts when that workflow is enabled; check recent posts for duplicate content and posting intervals; provide troubleshooting summaries; and maintain access tokens if the owner enables token management.</p>
 <h2>4. AI services and external providers</h2>
 <p>The tool can send <strong>selected excerpts of permitted public Threads posts, topic labels and related contextual information</strong> to Google's Gemini API to generate original Vietnamese-language drafts. Do not authorize this workflow for private or confidential content. Data provided to Google is processed subject to the applicable Google API terms and privacy practices.</p>
 <p>Meta provides the Threads API. GitHub hosts the code, Actions execution, encrypted repository secrets, draft artifacts and this website. Their respective services and policies apply. We do not sell personal information or use it for personalized advertising.</p>
@@ -48,7 +48,7 @@
 <section id="tieng-viet" lang="vi"><span class="lang">Tiếng Việt</span>
 <h2>1. Giới thiệu ứng dụng</h2>
 <p><strong>automation thread</strong> là ứng dụng đang phát triển, sử dụng Threads API chính thức của Meta để nghiên cứu bài viết công khai theo từ khóa và hỗ trợ AI tạo bản nháp tiếng Việt. Mã nguồn do tài khoản GitHub <a href="https://github.com/mvtruong2008-jpg">mvtruong2008-jpg</a> quản lý. Mã ứng dụng Meta: <strong>1109750755284751</strong>.</p>
-<p class="notice"><strong>Phạm vi hiện tại:</strong> Công cụ chỉ nghiên cứu và tạo bản nháp; không tự đăng bài Threads, trả lời, thích hoặc theo dõi tài khoản khác.</p>
+<p class="notice"><strong>Phạm vi hiện tại:</strong> Công cụ nghiên cứu và tạo bản nháp; khi chủ tài khoản chủ động bật chức năng đăng và Meta cấp quyền phù hợp, công cụ có thể đăng bài văn bản gốc lên chính tài khoản Threads đã ủy quyền. Không tự trả lời, thích hoặc theo dõi tài khoản khác.</p>
 <h2>2. Dữ liệu có thể xử lý</h2>
 <ul>
 <li>Định danh người dùng Threads, tên người dùng, trạng thái ủy quyền và token được chủ tài khoản cấp.</li>
@@ -58,7 +58,7 @@
 </ul>
 <p>Công cụ không yêu cầu mật khẩu Threads và không chủ động thu thập tin nhắn riêng tư, danh bạ hay thông tin thanh toán.</p>
 <h2>3. Mục đích xử lý</h2>
-<p>Xác thực quyền Threads API; tìm kiếm và đánh giá bài đăng công khai phù hợp; tìm chủ đề mới; dùng AI tạo bản nháp độc lập; kiểm tra trùng lặp; hiển thị chẩn đoán kỹ thuật; và gia hạn token khi chủ tài khoản bật tính năng.</p>
+<p>Xác thực quyền Threads API; tìm kiếm và đánh giá tín hiệu chủ đề công khai; dùng AI tạo bản nháp độc lập; tùy chọn đăng nội dung khi chủ tài khoản bật tính năng và cấp quyền; đọc những bài gần đây của tài khoản để chống đăng trùng và giãn cách; hiển thị chẩn đoán kỹ thuật; và gia hạn token khi chủ tài khoản bật tính năng.</p>
 <h2>4. Dịch vụ bên thứ ba</h2>
 <p>Trích đoạn của bài viết Threads công khai được phép sử dụng, nhãn chủ đề và thông tin liên quan có thể được gửi đến <strong>Google Gemini API</strong> để tạo bản nháp. Dữ liệu gửi cho Google chịu sự điều chỉnh của điều khoản và chính sách tương ứng của Google. Meta cung cấp API, còn GitHub lưu trữ mã nguồn, workflow, Secrets, tệp kết quả và website. Chúng tôi không bán dữ liệu cá nhân hoặc sử dụng dữ liệu cho quảng cáo cá nhân hóa.</p>
 <h2>5. Lưu trữ và thời hạn</h2>
