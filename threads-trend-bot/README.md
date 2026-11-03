@@ -11,6 +11,10 @@
 - Lưu drafts.md và drafts.json vào GitHub Actions Artifacts.
 - Không gọi Threads publishing endpoints, không thả tim hoặc theo dõi tài khoản hàng loạt.
 
+## Kết nối Threads API thật
+
+Xem hướng dẫn từng bước: [META_SETUP_VI.md](META_SETUP_VI.md). Không gửi access token qua chat; chỉ lưu bằng GitHub Actions Secret `THREADS_ACCESS_TOKEN`.
+
 ## Chạy thử DEMO ngay
 
 1. GitHub → Actions → Threads Trend Bot - Drafts Only.
