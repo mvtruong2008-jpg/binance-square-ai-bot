@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.parse
@@ -16,9 +17,22 @@ import urllib.request
 GRAPH_ROOT = "https://graph.threads.net/v1.0"
 
 
-def get_json(path: str, token: str, params=None) -> dict:
-    if not token.strip():
+def ensure_user_access_token(token: str) -> str:
+    """Fail closed for a common App Secret format. Never log token content."""
+    value = token.strip()
+    if not value:
         raise RuntimeError("MISSING_TOKEN: Set THREADS_ACCESS_TOKEN as a GitHub Actions secret.")
+    if re.fullmatch(r"[a-fA-F0-9]{32}", value):
+        raise RuntimeError(
+            "LIKELY_APP_SECRET: 32 hexadecimal characters resemble a Meta App Secret, "
+            "not a Threads User Access Token. Complete Threads Login authorization "
+            "and save the USER token in THREADS_ACCESS_TOKEN. Do not paste secrets in chat."
+        )
+    return value
+
+
+def get_json(path: str, token: str, params=None) -> dict:
+    token = ensure_user_access_token(token)
     if path not in ("/me", "/keyword_search"):
         raise ValueError("Only read-only Threads API endpoints are allowed.")
     url = GRAPH_ROOT + path
@@ -55,6 +69,7 @@ def main():
         print("NOT_CONFIGURED: THREADS_ACCESS_TOKEN is not set in GitHub Actions secrets.")
         print("Meta app creation and OAuth authorization must be done by the account owner.")
         return 2
+    ensure_user_access_token(token)
     profile = get_json("/me", token, {"fields": "id,username"})
     if not profile.get("id"):
         raise RuntimeError("THREADS_PROFILE_CHECK_FAILED: No Threads user ID returned.")
