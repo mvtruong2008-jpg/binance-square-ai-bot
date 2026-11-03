@@ -1,4 +1,4 @@
 # External trigger for Binance Square 5-coin batch. No secrets here.
 # Publishing only when GitHub commit message is exactly trigger:binance-5post-publish
-batch_id: preview-20261103-1326
-request: preview
+batch_id: publish-20261103-1329
+request: publish
