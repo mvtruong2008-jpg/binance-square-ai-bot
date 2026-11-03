@@ -9,10 +9,6 @@ on:
         type: boolean
         default: false
 
-  schedule:
-    - cron: "13,43 * * * *"
-      timezone: "Asia/Ho_Chi_Minh"
-
 permissions:
   contents: read
 
@@ -21,19 +17,6 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  scheduled_trigger_check:
-    name: Automatic clock check (no posts)
-    if: github.event_name == 'schedule'
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-    steps:
-      - name: Confirm GitHub launched this automatically
-        run: |
-          echo "SCHEDULED_TRIGGER_OK: GitHub started this workflow automatically."
-          echo "Event: ${{ github.event_name }}"
-          echo "UTC: $(date -u +'%Y-%m-%d %H:%M:%S')"
-          echo "No Gemini requests and no Binance posts from this check."
-
   pilot:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
