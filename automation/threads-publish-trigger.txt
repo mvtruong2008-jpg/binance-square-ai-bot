@@ -4,4 +4,4 @@
 # trigger:threads-one-publish
 # A nonpublishing test uses exact message:
 # trigger:threads-one-preview
-state: initial
+state: first-live-safe-preview-20261103
