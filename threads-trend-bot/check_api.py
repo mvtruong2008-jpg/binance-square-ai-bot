@@ -31,6 +31,23 @@ def ensure_user_access_token(token: str) -> str:
     return value
 
 
+def meta_numeric_error(exc) -> str:
+    """Return numeric Meta error codes ONLY; never log error message or request URL."""
+    try:
+        payload = json.loads(exc.read(8192))
+        error = payload.get("error", {}) if isinstance(payload, dict) else {}
+        if not isinstance(error, dict):
+            return ""
+        parts = []
+        for field in ("code", "error_subcode"):
+            value = error.get(field)
+            if type(value) is int and 0 <= value <= 999999:
+                parts.append(f"{field}={value}")
+        return " (" + ", ".join(parts) + ")" if parts else ""
+    except (ValueError, UnicodeError, TypeError, AttributeError, OSError):
+        return ""
+
+
 def get_json(path: str, token: str, params=None) -> dict:
     """Threads Graph authentication supports bearer and access_token parameter.
 
@@ -61,8 +78,9 @@ def get_json(path: str, token: str, params=None) -> dict:
                 print("AUTH_TRANSPORT_RETRY: bearer rejected; testing Graph access_token parameter.")
                 continue
             if exc.code in (400, 401):
+                details = meta_numeric_error(exc)
                 raise RuntimeError(
-                    f"THREADS_AUTH_FAILED: HTTP {exc.code}; token invalid/expired or Meta authorization rejected."
+                    f"THREADS_AUTH_FAILED: HTTP {exc.code}{details}; token invalid/expired or Meta authorization rejected."
                 ) from None
             if exc.code == 403:
                 raise RuntimeError(

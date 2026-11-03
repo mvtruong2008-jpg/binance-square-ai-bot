@@ -61,6 +61,19 @@ class ReadOnlyApiTests(unittest.TestCase):
         self.assertNotIn(synthetic, str(raised.exception))
         self.assertEqual(transport.call_count, 2)
 
+    def test_oauth_numeric_codes_are_safe_and_messages_hidden(self):
+        import urllib.error
+        body = io.BytesIO(b'{"error":{"code":190,"error_subcode":463,"message":"DO_NOT_EXPOSE"} }')
+        err = urllib.error.HTTPError("https://graph.threads.net/v1.0/me", 400, "bad", None, body)
+        safe = checker.meta_numeric_error(err)
+        self.assertEqual(safe, " (code=190, error_subcode=463)")
+        self.assertNotIn("DO_NOT_EXPOSE", safe)
+
+    def test_missing_oauth_payload_does_not_crash(self):
+        import urllib.error
+        err = urllib.error.HTTPError("https://graph.threads.net/v1.0/me", 400, "bad", None, io.BytesIO(b'not-json'))
+        self.assertEqual(checker.meta_numeric_error(err), "")
+
     def test_missing_secret_has_clear_status(self):
         with patch.dict(os.environ, {"THREADS_ACCESS_TOKEN": ""}):
             with redirect_stdout(io.StringIO()) as output:
