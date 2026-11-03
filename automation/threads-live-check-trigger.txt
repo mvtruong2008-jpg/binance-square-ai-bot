@@ -1,4 +1,4 @@
 purpose: one-time-threads-api-check
-state: check-requested-20261103
+state: auth-compat-retest-20261103
 # This marker never contains token material.
 # Only an exact commit message trigger:threads-live-check invokes API real tests.
