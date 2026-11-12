@@ -108,11 +108,11 @@ class TrendHunterTests(unittest.TestCase):
                 self.assertIsNone(bot.planned_story({}))
 
     def test_generated_text_always_mentions_analyzed_cashtag(self):
-        result = bot.ensure_coin_cashtag("The network is seeing more activity.", "SOL")
+        result = bot.ensure_coin_cashtag("The network is seeing more activity this week, but confirmation remains uncertain.", "SOL")
         self.assertTrue(result.startswith("$SOL:"))
-        self.assertEqual(bot.ensure_coin_cashtag("Fresh $SOL coverage.", "SOL"),
-                         "Fresh $SOL coverage.")
-        two_others = bot.ensure_coin_cashtag("Compare $BTC with $ETH.", "SOL")
+        self.assertEqual(bot.ensure_coin_cashtag("Fresh $SOL coverage provides a closer look at current market conditions.", "SOL"),
+                         "Fresh $SOL coverage provides a closer look at current market conditions.")
+        two_others = bot.ensure_coin_cashtag("Compare $BTC with $ETH to understand how current momentum differs in the market.", "SOL")
         self.assertIn("$SOL", two_others)
         self.assertLessEqual(two_others.count("$"), 2)
 
