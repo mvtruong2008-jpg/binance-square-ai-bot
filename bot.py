@@ -207,24 +207,45 @@ def gemini_post(story, market):
     api_key = os.getenv("GEMINI_API_KEY", "")
     if not api_key:
         raise RuntimeError("Missing GEMINI_API_KEY GitHub Secret")
-    # Only brief, attributable summaries; source headlines are not verified articles.
-    prompt = f"""Write an ORIGINAL concise Binance Square post in ENGLISH (2-4 sentences, 35-85 words).
+    # Rotate editorial approach deterministically across news and coins.
+    angles = (
+        "Lead with the confirmed observable market fact and explain why it matters.",
+        "Explain the difference between an interesting signal and a proven trend.",
+        "Focus on the unanswered question and what evidence would clarify it.",
+        "Offer a balanced bullish versus bearish interpretation without taking sides.",
+    )
+    index = int(hashlib.sha256(story["id"].encode()).hexdigest()[:2], 16) % len(angles)
+    angle = angles[index]
+    trend = story.get("trend") or {}
+    extra = ""
+    if trend.get("rank"):
+        extra = f"CoinGecko trending-search rank at discovery: {trend['rank']} (not an investment rating)."
+    prompt = f"""You are the editorial desk of an ORIGINAL English-language Binance Square crypto newsletter.
+Write exactly 2-4 natural sentences, 35-85 words, for curious investors (not a trading signal).
 Cryptocurrency: {COINS[story['symbol']]['name']} (${story['symbol']})
-News headline: {story['headline']}
-Publisher as listed by RSS: {story['publisher']}
-Headline published at UTC: {story['date']}
-Current {market['source']} market snapshot: {market['price']:.8g} {market['quote']}, 24-hour change {market['change']:+.2f}%.
-Rules:
-- Treat RSS headlines as attributed reports, NOT confirmed facts.
-- When the headline is a MARKET SNAPSHOT, discuss only the live market data; do not invent events or reports.
-- Do not fabricate causes, events, price predictions, specific claims or quotes.
-- If mentioning the market snapshot, explicitly treat it as CURRENT, not at publication time.
-- At most TWO crypto cashtags (e.g. $BTC). Optional 1 relevant hashtag.
-- Absolutely NO URLs, web addresses, references, Markdown links, or source-link blocks.
-- No pump hype, calls to trade, or guarantees. Return only post body text.
+Headline or MARKET SNAPSHOT label: {story['headline']}
+RSS publisher or market-data origin: {story['publisher']}
+Headline publication time UTC: {story['date']}
+Current verified {market['source']} market data: spot price {market['price']:.8g} {market['quote']}; 24h price change {market['change']:+.2f}%.
+{extra}
+Editorial perspective: {angle}
+Strict publication rules:
+- First sentence: informative, crisp hook that is supported by the supplied facts, not clickbait.
+- Do not invent news events, catalyst explanations, sources, quotes, partnerships or trade volume.
+- RSS provides only one headline, not verified article text. Attribute any news claim to its publisher,
+  using tentative language where appropriate. Never imply independent confirmation.
+- When the headline is a MARKET SNAPSHOT, use ONLY the verified live price and 24h change.
+  Avoid implying a new news event, volume surge or trending rank unless supplied.
+- Give one real useful interpretation or an uncertainty to watch; no price targets, fake urgency,
+  guaranteed returns, buy/sell calls, or unsubstantiated hype.
+- Include the relevant coin cashtag once in context (e.g. ${story['symbol']}).
+  Never exceed TWO cashtags. You may use one relevant hashtag, but do not force it.
+- An authentic discussion question is OPTIONAL; ask one only if it adds value.
+- Absolutely NO URLs, Markdown links, fake source blocks, or claims of exclusive insights.
+- Return only the final post text; no preface, headings, or notes.
 """
     endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + urllib.parse.quote(GEMINI_MODEL, safe="") + ":generateContent"
-    payload = json.dumps({"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"temperature": 0.45}}).encode()
+    payload = json.dumps({"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"temperature": 0.60}}).encode()
     req = urllib.request.Request(endpoint, data=payload, method="POST", headers={
         "x-goog-api-key": api_key, "Content-Type": "application/json"})
     try:
@@ -400,6 +421,40 @@ def demo():
     print("DEMO only: generated image, no API calls, nothing published.")
 
 
+def planned_story(history):
+    """Load a short-lived Trend Hunter decision for this specific coin only."""
+    path_str = os.environ.get("TREND_PLAN_PATH", "")
+    if not path_str or not PILOT_SYMBOL:
+        return None
+    try:
+        plan = json.loads(Path(path_str).read_text(encoding="utf-8"))
+        created = datetime.fromisoformat(plan["generated_at"])
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+        age = datetime.now(timezone.utc) - created.astimezone(timezone.utc)
+        if age < timedelta(0) or age > timedelta(hours=2):
+            print("TREND_PLAN_EXPIRED: falling back to regular RSS discovery.")
+            return None
+        item = plan["items"][PILOT_SYMBOL]
+        news = item.get("news")
+        if news and news.get("id") not in history and news.get("symbol") == PILOT_SYMBOL:
+            story = dict(news)
+        else:
+            now = datetime.now(timezone.utc)
+            story = {
+                "id": "market:" + PILOT_SYMBOL + ":" + now.strftime("%Y%m%d%H%M"),
+                "symbol": PILOT_SYMBOL,
+                "headline": COINS[PILOT_SYMBOL]["name"] + " market snapshot",
+                "publisher": "Live market data (not a news event)",
+                "date": now.isoformat(),
+            }
+        story["trend"] = {"rank": item.get("trend_rank")}
+        return story
+    except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
+        print(f"TREND_PLAN_WARNING: {type(exc).__name__}; using original discovery.")
+        return None
+
+
 def main():
     if "--demo" in sys.argv:
         demo()
@@ -410,11 +465,17 @@ def main():
     history = load_history()
     symbols = choose_symbols(history)
     print("Coin candidates:", ", ".join(symbols))
-    stories = [item for item in fetch_stories(symbols) if item["id"] not in history]
-    if stories:
-        order = {symbol: i for i, symbol in enumerate(symbols)}
-        stories.sort(key=lambda item: (order[item["symbol"]], -datetime.fromisoformat(item["date"]).timestamp()))
-        story = stories[0]
+    story = planned_story(history)
+    if story:
+        print("TREND_EDITORIAL_SOURCE:", "RSS" if story.get("publisher") != "Live market data (not a news event)" else "MARKET_ONLY")
+    else:
+        stories = [item for item in fetch_stories(symbols) if item["id"] not in history]
+        if stories:
+            order = {symbol: i for i, symbol in enumerate(symbols)}
+            stories.sort(key=lambda item: (order[item["symbol"]], -datetime.fromisoformat(item["date"]).timestamp()))
+            story = stories[0]
+    if story:
+        pass
     elif os.getenv("ALLOW_MARKET_ONLY", "false").lower() == "true":
         symbol = symbols[0]
         now = datetime.now(timezone.utc)
