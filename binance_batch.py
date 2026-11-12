@@ -76,6 +76,9 @@ def run_coin(symbol):
     env = os.environ.copy()
     env["PILOT_SYMBOL"] = symbol
     env["ALLOW_MARKET_ONLY"] = "true"
+    if os.environ.get("TREND_HUNTER_ENABLED", "false").lower() in {"1", "true", "yes"}:
+        if os.path.isfile("data/trend_plan.json"):
+            env["TREND_PLAN_PATH"] = "data/trend_plan.json"
     # Never pass secrets on the command line.
     print(f"COIN_START: {symbol}, mode={'PUBLISH' if PUBLISH else 'PREVIEW'}", flush=True)
     try:
@@ -102,7 +105,25 @@ def main():
     else:
         daily_count = 0
 
-    selected = available_coins(history, now)[:MAX_ATTEMPTS]
+    eligible = available_coins(history, now)
+    selected = eligible[:MAX_ATTEMPTS]
+    # Plan the batch once rather than choose coins by rotation alone.
+    # A network failure must never disable the existing publishing pipeline.
+    if os.environ.get("TREND_HUNTER_ENABLED", "false").lower() in {"1", "true", "yes"} and eligible:
+        try:
+            from trend_hunter import plan_batch, write_plan
+            ranked = plan_batch(eligible, history, now)
+            if ranked:
+                write_plan(ranked, "data/trend_plan.json")
+                selected = [item["symbol"] for item in ranked[:MAX_ATTEMPTS]]
+                for item in ranked[:MAX_ATTEMPTS]:
+                    print(
+                        f"TREND_CHOICE: {item['symbol']} score={item['score']:.1f} "
+                        f"trending_rank={item['trend_rank']} has_news={bool(item['news'])}",
+                        flush=True,
+                    )
+        except Exception as exc:
+            print(f"TREND_FALLBACK: {type(exc).__name__}: {exc}", flush=True)
     if not selected:
         print("BATCH_SKIPPED: All coins are inside the 12-hour cooldown window.")
         return 0
