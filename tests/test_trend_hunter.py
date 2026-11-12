@@ -107,6 +107,15 @@ class TrendHunterTests(unittest.TestCase):
                  patch.object(bot, "PILOT_SYMBOL", "BTC"):
                 self.assertIsNone(bot.planned_story({}))
 
+    def test_generated_text_always_mentions_analyzed_cashtag(self):
+        result = bot.ensure_coin_cashtag("The network is seeing more activity.", "SOL")
+        self.assertTrue(result.startswith("$SOL:"))
+        self.assertEqual(bot.ensure_coin_cashtag("Fresh $SOL coverage.", "SOL"),
+                         "Fresh $SOL coverage.")
+        two_others = bot.ensure_coin_cashtag("Compare $BTC with $ETH.", "SOL")
+        self.assertIn("$SOL", two_others)
+        self.assertLessEqual(two_others.count("$"), 2)
+
     def test_batch_feature_flag_uses_ranked_order(self):
         ranked = [{"symbol": "SOL", "score": 70.0, "trend_rank": 1, "news": None},
                   {"symbol": "BTC", "score": 40.0, "trend_rank": None, "news": None}]
