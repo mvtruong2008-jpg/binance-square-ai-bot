@@ -267,8 +267,12 @@ def ensure_coin_cashtag(text, symbol):
     """
     cleaned = clean_post(text)
     target = "$" + symbol.upper()
-    present = {value.upper() for value in re.findall(r"(?<!\w)\$[A-Za-z][A-Za-z0-9]*", cleaned)}
+    cashtags = re.findall(r"(?<!\w)\$[A-Za-z][A-Za-z0-9]*", cleaned)
+    present = {value.upper() for value in cashtags}
     if target.upper() not in present:
+        # Keep total at two cashtags, including the analyzed coin.
+        if len(cashtags) >= 2:
+            cleaned = cleaned.replace(cashtags[-1], cashtags[-1][1:], 1)
         cleaned = clean_post(target + ": " + cleaned)
     return cleaned
 
