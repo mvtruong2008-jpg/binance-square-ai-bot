@@ -267,7 +267,7 @@ def ensure_coin_cashtag(text, symbol):
     """
     cleaned = clean_post(text)
     target = "$" + symbol.upper()
-    present = {value.upper() for value in re.findall(r"(?<!\\w)\\$[A-Za-z][A-Za-z0-9]*", cleaned)}
+    present = {value.upper() for value in re.findall(r"(?<!\w)\$[A-Za-z][A-Za-z0-9]*", cleaned)}
     if target.upper() not in present:
         cleaned = clean_post(target + ": " + cleaned)
     return cleaned
