@@ -257,7 +257,20 @@ Strict publication rules:
         text = "".join(part.get("text", "") for part in response["candidates"][0]["content"]["parts"])
     except (KeyError, TypeError, IndexError) as exc:
         raise RuntimeError("Gemini returned no usable text") from exc
-    return clean_post(text)
+    return ensure_coin_cashtag(text, story["symbol"])
+
+
+def ensure_coin_cashtag(text, symbol):
+    """Ensure monetization eligibility is not lost if AI omits the relevant symbol.
+
+    The cashtag remains descriptive, never an instruction to trade.
+    """
+    cleaned = clean_post(text)
+    target = "$" + symbol.upper()
+    present = {value.upper() for value in re.findall(r"(?<!\\w)\\$[A-Za-z][A-Za-z0-9]*", cleaned)}
+    if target.upper() not in present:
+        cleaned = clean_post(target + ": " + cleaned)
+    return cleaned
 
 
 def clean_post(text):
