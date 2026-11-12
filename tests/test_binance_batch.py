@@ -11,6 +11,11 @@ import binance_batch as b
 
 class BinanceBatchTests(unittest.TestCase):
     def setUp(self):
+        # Legacy rotation tests must not inherit the live trend feature flag.
+        # New ranking behaviour has its own independently isolated tests.
+        env_patch = patch.dict(os.environ, {"TREND_HUNTER_ENABLED": "false"})
+        env_patch.start()
+        self.addCleanup(env_patch.stop)
         self.now = datetime(2026, 11, 3, 6, 0, tzinfo=timezone.utc)
 
     def test_five_unique_coin_plan(self):
