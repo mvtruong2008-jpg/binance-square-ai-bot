@@ -30,7 +30,7 @@ Giữ nguyên `GEMINI_API_KEY`, `BINANCE_SQUARE_OPENAPI_KEY`, `COINGECKO_DEMO_KE
 1. Chạy test và PREVIEW trên nhánh phát triển; kiểm tra artifact và nguồn.
 2. Merge mã đã qua kiểm tra vào `main`.
 3. Khởi tạo journal: Run workflow, chọn `initialize_state=true`. Không đăng ở bước này. Có thể tạo branch `x-lei-state` với `state.json` schema v3 bằng API và nhập bài cũ khi chuyển đổi.
-4. Đổi `newsroom/control.json` trên **main**: `enabled=true`, `stop=false`. Đây là công tắc hoạt động thật; lịch sẽ chọn LIVE. Push thay đổi control chỉ chạy PREVIEW, tránh đăng ngay vì một commit cấu hình.
+4. Đổi `newsroom/control.json` trên **main**: `enabled=true`, `stop=false`. Đây là công tắc hoạt động thật; lịch sẽ chọn LIVE. Push bình thường chạy PREVIEW; ngoại lệ có chủ đích là commit chính xác `trigger:x-lei-live` trên main sẽ kiểm thử rồi chạy một lượt LIVE, vẫn phải qua control và mọi khóa đăng.
 5. Kiểm tra một lượt LIVE và journal có trạng thái `published` cùng ID bài thật.
 
 **Dừng khẩn cấp:** đặt `stop=true` trong `newsroom/control.json` trên main, hoặc repository variable `X_LEI_STOP=true` để các lượt mới dừng. LIVE tải lại control từ default branch ngay trước đăng và sau khi reserve; không phụ thuộc file cũ trong checkout. Lệnh đã được Binance tiếp nhận có thể hoàn thành dù vừa bật stop. Journal vẫn bảo toàn.

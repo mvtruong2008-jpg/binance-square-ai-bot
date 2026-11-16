@@ -352,6 +352,14 @@ class PipelineNetworkTests(unittest.TestCase):
         self.assertIsNone(rows[0]["likes"])
         self.assertEqual(performance.strategy(rows, posts), {})
 
+    def test_performance_dimensions_use_observed_metrics_only(self):
+        posts = [{"post_id": "123", "kind": "MARKET ALERT", "symbol": "BTC", "text": "Brief factual observation",
+                  "reserved_at": NOW.isoformat(), "media": {"layout": 2}}]
+        metrics = [{"post_id": "123", "views": 100, "likes": 4, "observed_at": NOW.isoformat()}]
+        result = performance.analyze(metrics, posts)
+        self.assertEqual({r["dimension"] for r in result}, {"kind", "coin", "words", "media", "hour_utc"})
+        self.assertTrue(all(r["like_rate"] == .04 for r in result))
+
 
 if __name__ == "__main__":
     unittest.main()

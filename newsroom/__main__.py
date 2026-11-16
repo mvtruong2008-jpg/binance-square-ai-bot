@@ -4,10 +4,11 @@ import argparse
 import json
 import os
 import sys
+from datetime import timedelta
 from pathlib import Path
 
 from . import dashboard, hunters, market, performance
-from .core import HTTP, atomic_json, load_config, utcnow
+from .core import HTTP, atomic_json, load_config, stamp, utcnow
 from .editor import Editor, validate
 from .intelligence import plan
 from .media import produce
@@ -31,7 +32,7 @@ def run(args):
             raise ValueError("AI schema check failed")
         print(json.dumps({"ai_schema_check": "passed", "calls": editor.calls, "tokens": editor.tokens}))
         return 0
-    report = {"mode": args.mode, "status": "starting", "time": now.isoformat(), "threshold": cfg["threshold"], "drafts": [], "errors": []}
+    report = {"mode": args.mode, "status": "starting", "time": now.isoformat(), "threshold": cfg["threshold"], "drafts": [], "published": [], "errors": []}
     code = 0
     editor = Editor(http, cfg["max_ai_calls"])
     try:
@@ -52,7 +53,16 @@ def run(args):
         report.update(markets=markets, news=stories, topics=topics, social_status=social_status, social=signals,
                       universe_size=len(universe), strategy=learned,
                       performance=performance.analyze(state.get("metrics", []), state["posts"]))
+        waiting = ""
+        if args.mode == "LIVE":
+            recent = [p for p in state["posts"] if now-stamp(p["reserved_at"]) < timedelta(hours=24)]
+            if len(recent) >= cfg["max_posts_24h"]:
+                waiting = "waiting: 24-hour publication cap"
+            elif recent and now-max(stamp(p["reserved_at"]) for p in recent) < timedelta(minutes=cfg["gap_minutes"]):
+                waiting = "waiting: publication spacing"
         for topic in topics:
+            if waiting:
+                break
             if topic["duplicate"] or topic["score"] < cfg["threshold"]:
                 continue
             try:
@@ -62,7 +72,7 @@ def run(args):
                 media = produce(http, topic, cfg, args.output, len(state["posts"]) + len(report["drafts"]))
                 report["drafts"].append({**draft, "media": media, "kind": topic["kind"], "event_id": topic["id"]})
                 if args.mode == "LIVE":
-                    publish(store, topic, draft, media, args.output, cfg)
+                    report["published"].append(publish(store, topic, draft, media, args.output, cfg))
                 # One highest-quality post per scan; never fill a quota.
                 break
             except (ValueError, RuntimeError, KeyError, IndexError, TypeError) as exc:
@@ -71,7 +81,7 @@ def run(args):
                 if any(p["event_id"] == topic["id"] for p in store.data["posts"]):
                     code = 1
                     break
-        report["status"] = "published" if args.mode == "LIVE" and report["drafts"] and code == 0 else "preview ready" if report["drafts"] else "no eligible content"
+        report["status"] = waiting or ("published" if report["published"] else "preview ready" if args.mode == "PREVIEW" and report["drafts"] else "no eligible content")
         if not markets:
             raise RuntimeError("No fresh verified market data; no publication")
     except (ValueError, RuntimeError, KeyError, IndexError, TypeError) as exc:

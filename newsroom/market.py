@@ -80,12 +80,19 @@ def discover(http, state, cfg, now):
         candidates.append({**universe[symbol], "price": price, "change": change, "volume": volume,
                            "asof": asof.isoformat(), "rank": rank, "quote": "USDT"})
     candidates.sort(key=lambda c: (abs(c["change"]) + (15 / c["rank"] if c["rank"] else 0)), reverse=True)
+    selected = candidates[:cfg["max_market_candidates"]]
+    btc = next((c for c in candidates if c["symbol"] == "BTC"), None)
+    if btc and btc not in selected:
+        selected[-1:] = [btc]  # Keep a verified, explicitly separate macro market context.
     result = []
-    for coin in candidates[:cfg["max_market_candidates"]]:
+    for coin in selected:
         candles = http.optional("Binance candles " + coin["symbol"], lambda c=coin: http.json(
             BASE + "/klines?" + urllib.parse.urlencode({"symbol": c["pair"], "interval": "1h", "limit": 26})), [])
         closed = [r for r in candles if stamp_ms(r[6]) < now]
         if len(closed) < 25:
+            continue
+        if (now - stamp_ms(closed[-1][6]) > timedelta(minutes=75)
+                or any(number(b[0])-number(a[0]) != 3_600_000 for a, b in zip(closed[-25:-1], closed[-24:]))):
             continue
         prices = [number(r[4]) for r in closed]
         volumes = [number(r[7]) for r in closed]

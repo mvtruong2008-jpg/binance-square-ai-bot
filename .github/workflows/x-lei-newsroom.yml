@@ -77,6 +77,8 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
           REQUEST_MODE: ${{ inputs.mode }}
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          REF: ${{ github.ref }}
         run: |
           python - <<'PY'
           import os
@@ -87,6 +89,9 @@ jobs:
           if os.environ['EVENT'] == 'schedule' and settings.get('enabled') is True:
               mode = 'LIVE'
           if os.environ['EVENT'] == 'workflow_dispatch' and os.environ.get('REQUEST_MODE') == 'LIVE':
+              mode = 'LIVE'
+          if (os.environ['EVENT'] == 'push' and os.environ['REF'] == 'refs/heads/main'
+                  and os.environ.get('COMMIT_MESSAGE') == 'trigger:x-lei-live'):
               mode = 'LIVE'
           with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
               f.write('mode=' + mode + '\n')
