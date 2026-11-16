@@ -1,8 +1,11 @@
 {
   "request_id": "trial-20261116-1624",
-  "max_posts": 1,
+  "max_posts": 0,
   "ref": "refs/heads/codex/x-lei-3-newsroom",
   "expires_at": "2026-11-16T17:24:32+00:00",
   "free_ai_confirmed": true,
-  "scope": "Owner requested one trial Binance Square post; no main merge or recurring LIVE activation"
+  "status": "completed-and-revoked",
+  "post_id": "388936605990509",
+  "workflow_run_id": 43907439275,
+  "scope": "One owner-requested trial completed. No further publication permitted."
 }
