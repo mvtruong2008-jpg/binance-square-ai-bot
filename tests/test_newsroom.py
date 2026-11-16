@@ -235,6 +235,22 @@ class JournalPublisherTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             store.reserve(topic(), {}, {}, core.load_config(), NOW)
 
+    def test_archive_committed_before_old_records_removed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = self.store(tmp)
+            old = {"event_id": "old", "reserved_at": (NOW-timedelta(days=16)).isoformat(), "status": "published"}
+            store.data["posts"] = [old]
+            store.api.side_effect = [RuntimeError("HTTP 404"), {"content": {"sha": "archived"}}]
+            store.archive()
+            self.assertEqual(store.data["posts"], [])
+            body = store.api.call_args.args[2]
+            self.assertEqual(json.loads(base64.b64decode(body["content"]))[0]["event_id"], "old")
+            store.data["posts"] = [old]
+            store.api.side_effect = RuntimeError("HTTP 403")
+            with self.assertRaises(RuntimeError):
+                store.archive()
+            self.assertEqual(store.data["posts"], [old])
+
     def test_live_missing_journal_never_resets_history(self):
         with tempfile.TemporaryDirectory() as tmp:
             store = self.store(tmp)

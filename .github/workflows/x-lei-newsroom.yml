@@ -94,6 +94,9 @@ jobs:
       - name: Initialize journal without publication
         if: github.event_name == 'workflow_dispatch' && inputs.initialize_state
         run: python -m newsroom --init-state
+      - name: Verify real free-tier Gemini connection and structured output
+        if: github.event_name == 'push'
+        run: python -m newsroom --check-ai
       - name: Run evidence-first newsroom
         if: "!(github.event_name == 'workflow_dispatch' && inputs.initialize_state)"
         env:

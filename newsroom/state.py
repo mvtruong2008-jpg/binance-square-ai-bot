@@ -13,7 +13,7 @@ import re
 from datetime import timedelta
 from pathlib import Path
 
-from .core import atomic_json, stamp
+from .core import atomic_json, stamp, utcnow
 
 
 def empty_state():
@@ -81,11 +81,36 @@ class State:
         if self.live:
             if not self.sha:
                 raise RuntimeError("Missing state revision; no publication allowed")
+            self.archive()
             content = base64.b64encode(json.dumps(self.data, ensure_ascii=False).encode()).decode()
             result = self.api("/contents/state.json", "PUT", {"message": "Update X LEI journal [skip ci]", "branch": self.branch,
                               "sha": self.sha, "content": content})
             self.sha = result["content"]["sha"]
         atomic_json(self.local, self.data)
+
+    def archive(self):
+        """Commit old records before removing them from the bounded hot journal."""
+        cutoff = utcnow() - timedelta(days=14)
+        older = [r for r in self.data["posts"] if stamp(r["reserved_at"]) < cutoff]
+        for day in sorted({stamp(r["reserved_at"]).strftime("%Y-%m-%d") for r in older}):
+            path = "/contents/archive/" + day + ".json"
+            records, sha = {}, None
+            try:
+                result = self.api(path + "?ref=" + self.branch)
+                sha = result["sha"]
+                records = {r["event_id"]: r for r in json.loads(base64.b64decode(result["content"]))}
+            except RuntimeError as exc:
+                if "HTTP 404" not in str(exc):
+                    raise
+            records.update({r["event_id"]: r for r in older if stamp(r["reserved_at"]).strftime("%Y-%m-%d") == day})
+            body = {"message": "Archive X LEI posts " + day + " [skip ci]", "branch": self.branch,
+                    "content": base64.b64encode(json.dumps(list(records.values()), ensure_ascii=False).encode()).decode()}
+            if sha:
+                body["sha"] = sha
+            self.api(path, "PUT", body)
+        if older:
+            self.data["posts"] = [r for r in self.data["posts"] if stamp(r["reserved_at"]) >= cutoff]
+        self.data["metrics"] = self.data.get("metrics", [])[-1000:]
 
     def reserve(self, topic, draft, media, cfg, now):
         if not self.live:

@@ -27,10 +27,15 @@ def render(report, output):
     sections.append('<h2>Lịch sử và đối soát</h2>'+table(["Thời gian", "Trạng thái", "Coin", "Loại", "ID bài", "Nội dung"], [
         [r["reserved_at"], r["status"], r["symbol"], r["kind"], r.get("post_id", "—"), r["text"]] for r in reversed(report.get("posts", [])[-100:])]))
     sections.append('<h2>Nguồn xã hội</h2>'+table(["Nguồn", "Trạng thái"], report.get("social_status", {}).items()))
+    sections.append(table(["Bài xã hội", "Net score", "Comments", "Score/giờ", "Từ khóa"], [
+        [r["title"], r["net_score"], r["comments"], r.get("score_per_hour"), ", ".join(r.get("keywords", []))] for r in report.get("social", [])]))
     sections.append('<h2>API và hạn mức</h2><p>Số request thực tế trong lượt chạy; không suy đoán hạn mức còn lại hoặc hóa đơn.</p>'+table(
         ["Host", "Requests"], report.get("requests", {}).items()))
     sections.append('<p>AI: '+esc(report.get("ai_calls", 0))+' calls / '+esc(report.get("ai_limit", 0))+'; '+esc(report.get("ai_tokens", 0))+' tokens. Chi phí: dùng cấu hình miễn phí đã xác nhận; hóa đơn thực tế không có API truy cập.</p>')
     sections.append('<h2>Hiệu suất nội dung</h2><p>Chưa có API thống kê Binance Square được xác nhận. Views/likes/comments/shares/clicks: không có dữ liệu. Chiến lược giữ mặc định, chỉ điều chỉnh từ số liệu thật được nhập và kiểm tra.</p>')
+    if report.get("performance"):
+        sections.append(table(["Phân tích theo", "Nhóm", "Số bài", "Views", "Likes", "Like/view"], [
+            [r["dimension"], r["value"], r["posts"], r["views"], r["likes"], f'{r["like_rate"]:.2%}'] for r in report["performance"]]))
     sections.append('<h2>Lỗi / nội dung bị loại</h2>'+table(["Nguồn", "Lỗi", "Thời gian UTC"], [[r.get("source"), r.get("error"), r.get("time", "")] for r in report.get("errors", [])]))
     page = '''<!doctype html><html lang="vi"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'">

@@ -33,3 +33,23 @@ def strategy(metrics, posts):
             continue
         groups.setdefault(post["kind"], []).append(row["likes"] / row["views"])
     return {kind: sum(rates)/len(rates) for kind, rates in groups.items() if len(rates) >= 5}
+
+
+def analyze(metrics, posts):
+    latest = {}
+    for row in sorted(metrics, key=lambda r: stamp(r["observed_at"])):
+        latest[row["post_id"]] = row
+    groups = {}
+    for post in posts:
+        row = latest.get(post.get("post_id"))
+        if not row or not row.get("views") or row.get("likes") is None:
+            continue
+        dimensions = {"kind": post["kind"], "coin": post["symbol"], "words": "under 60" if len(post["text"].split()) < 60 else "60 or more",
+                      "media": str(post.get("media", {}).get("layout", "licensed")),
+                      "hour_utc": str(stamp(post.get("published_at", post["reserved_at"])).hour)}
+        for dimension, value in dimensions.items():
+            group = groups.setdefault((dimension, value), {"dimension": dimension, "value": value, "posts": 0, "views": 0, "likes": 0})
+            group["posts"] += 1
+            group["views"] += row["views"]
+            group["likes"] += row["likes"]
+    return [{**g, "like_rate": g["likes"]/g["views"]} for g in groups.values()]

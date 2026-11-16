@@ -63,6 +63,8 @@ Hệ thống cung cấp **at-most-once attempt**, không tuyên bố exactly-onc
 
 Các bài legacy trước chuyển đổi cần nhập vào journal hoặc chờ đủ 24 giờ trước bật LIVE để tránh vượt trần tổng. Lịch sử cũ vẫn được giữ trong cache của workflow cũ; không xóa.
 
+Journal nóng giữ 14 ngày; bài cũ được commit vào `archive/YYYY-MM-DD.json` trên state branch trước khi bỏ khỏi journal để dung lượng không tăng vô hạn. Dashboard hiện lịch sử gần nhất, archive giữ lịch sử lâu dài. Không xóa archive khi nâng cấp.
+
 ## Hiệu suất
 
 Không có endpoint analytics Square đã xác nhận nên không tạo views/likes/shares giả. Có thể nhập export thật:
@@ -72,6 +74,8 @@ Không có endpoint analytics Square đã xác nhận nên không tạo views/li
 ```
 
 `python -m newsroom --mode LIVE --import-metrics metrics.json` cần token/quyền và vẫn tuân thủ mọi khóa đăng. Chỉ chấp nhận ID đã đăng, chỉ số nguyên không âm hoặc null. Export do quản trị viên nhập là dữ liệu tin cậy từ người vận hành; chương trình không chứng minh tính xác thực của file. Khi có tối thiểu năm bài có views và likes cho mỗi dạng, tỷ lệ like/view thật dùng để ưu tiên khi **đồng điểm chất lượng**; không tự hạ ngưỡng và không tối ưu theo số liệu chưa có.
+
+Dashboard thống kê export thật theo dạng bài, coin, độ dài, bố cục ảnh và giờ UTC. `python -m newsroom --check-ai` kiểm tra kết nối Gemini và phản hồi JSON bằng một request, không đăng bài; workflow push chạy kiểm tra này trước PREVIEW.
 
 ## Nguồn kỹ thuật đã đối chiếu
 

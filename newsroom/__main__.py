@@ -22,6 +22,15 @@ def run(args):
         store.initialize()
         print("Durable journal initialized without publication")
         return 0
+    if getattr(args, "check_ai", False):
+        settings = control(http, local=True)
+        os.environ["X_LEI_FREE_AI_CONFIRMED"] = str(settings.get("free_ai_confirmed") is True).lower()
+        editor = Editor(http, 1)
+        result = editor.ask('Connectivity and JSON-schema check only. Return exactly {"ok": true}. No article and no external action.')
+        if result.get("ok") is not True:
+            raise ValueError("AI schema check failed")
+        print(json.dumps({"ai_schema_check": "passed", "calls": editor.calls, "tokens": editor.tokens}))
+        return 0
     report = {"mode": args.mode, "status": "starting", "time": now.isoformat(), "threshold": cfg["threshold"], "drafts": [], "errors": []}
     code = 0
     editor = Editor(http, cfg["max_ai_calls"])
@@ -41,7 +50,8 @@ def run(args):
         # Quality score remains the gate; measured performance only breaks ties.
         topics.sort(key=lambda t: (t["score"], learned.get(t["kind"], 0)), reverse=True)
         report.update(markets=markets, news=stories, topics=topics, social_status=social_status, social=signals,
-                      universe_size=len(universe), strategy=learned)
+                      universe_size=len(universe), strategy=learned,
+                      performance=performance.analyze(state.get("metrics", []), state["posts"]))
         for topic in topics:
             if topic["duplicate"] or topic["score"] < cfg["threshold"]:
                 continue
@@ -98,6 +108,7 @@ def main():
     parser.add_argument("--state", default="data/newsroom-state.json")
     parser.add_argument("--output", default="newsroom-output")
     parser.add_argument("--init-state", action="store_true")
+    parser.add_argument("--check-ai", action="store_true")
     parser.add_argument("--import-metrics")
     return run(parser.parse_args())
 
