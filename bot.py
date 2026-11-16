@@ -304,7 +304,7 @@ def font(size, bold=False):
         try:
             return ImageFont.truetype(path, size)
         except OSError:
-            return ImageFont.load_default()
+            return ImageFont.load_default(size=size)
 
 
 def ellipsize(draw, text, max_width, chosen_font):

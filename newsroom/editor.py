@@ -95,9 +95,9 @@ class Editor:
 def validate(topic, draft, history, now):
     text = draft["text"]
     coin = topic["market"]
-    if not timedelta(0) <= now - stamp(coin["asof"]) <= timedelta(minutes=5):
+    if not -timedelta(seconds=30) <= now - stamp(coin["asof"]) <= timedelta(minutes=5):
         raise ValueError("Market data expired")
-    if not timedelta(0) <= now - stamp(topic["published"]) <= timedelta(hours=6):
+    if not -timedelta(seconds=30) <= now - stamp(topic["published"]) <= timedelta(hours=6):
         raise ValueError("Event expired")
     if not re.fullmatch(r"[A-Z0-9]{2,20}", coin["symbol"]) or coin["pair"] != coin["symbol"] + "USDT" or not coin["id"]:
         raise ValueError("Unverified instrument")

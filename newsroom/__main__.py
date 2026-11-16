@@ -86,6 +86,8 @@ def run(args):
         atomic_json(Path(args.output) / "report.json", report)
         dashboard.render(report, args.output)
         print(json.dumps({k: report[k] for k in ("mode", "status", "time", "ai_calls")}, ensure_ascii=True))
+        if code:
+            print(json.dumps({"errors": report["errors"]}, ensure_ascii=True))
     return code
 
 

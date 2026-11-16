@@ -72,7 +72,7 @@ def discover(http, state, cfg, now):
         try:
             price, volume, change = number(row["lastPrice"]), number(row["quoteVolume"]), number(row["priceChangePercent"])
             asof = stamp_ms(row["closeTime"])
-            if price <= 0 or volume < cfg["min_quote_volume"] or not timedelta(0) <= now - asof <= timedelta(minutes=5):
+            if price <= 0 or volume < cfg["min_quote_volume"] or not -timedelta(seconds=30) <= now - asof <= timedelta(minutes=5):
                 continue
         except (ValueError, KeyError, TypeError):
             continue
@@ -108,7 +108,7 @@ def refresh(http, coin, now):
     if row.get("symbol") != coin["pair"]:
         raise ValueError("Instrument mismatch")
     date = stamp_ms(row["closeTime"])
-    if not timedelta(0) <= now - date <= timedelta(minutes=5):
+    if not -timedelta(seconds=30) <= now - date <= timedelta(minutes=5):
         raise ValueError("Stale ticker")
     result = {**coin, "price": number(row["lastPrice"]), "change": number(row["priceChangePercent"]), "asof": date.isoformat()}
     if result["price"] <= 0:

@@ -103,6 +103,17 @@ class IdentityNewsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             core.stamp("2026-11-01T10:00:00")
 
+    def test_ticker_during_request_is_fresh_but_clock_skew_is_bounded(self):
+        c = coin()
+        row = {"symbol": "BTCUSDT", "closeTime": (NOW+timedelta(seconds=2)).timestamp()*1000,
+               "lastPrice": "101", "priceChangePercent": "2"}
+        http = Mock()
+        http.json.return_value = row
+        self.assertEqual(market.refresh(http, c, NOW)["price"], 101)
+        row["closeTime"] = (NOW+timedelta(minutes=2)).timestamp()*1000
+        with self.assertRaises(ValueError):
+            market.refresh(http, c, NOW)
+
     def test_config_hard_cap(self):
         cfg = core.load_config()
         cfg["max_posts_24h"] = 21
