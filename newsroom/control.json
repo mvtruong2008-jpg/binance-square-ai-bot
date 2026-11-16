@@ -1,0 +1,6 @@
+{
+  "enabled": false,
+  "stop": false,
+  "free_ai_confirmed": true,
+  "note": "LIVE requires successful preview, enabled=true and stop=false. Set stop=true to halt new reservations."
+}

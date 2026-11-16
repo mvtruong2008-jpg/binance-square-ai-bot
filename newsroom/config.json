@@ -1,0 +1,23 @@
+{
+  "threshold": 65,
+  "max_posts_24h": 20,
+  "gap_minutes": 70,
+  "news_hours": 6,
+  "max_market_candidates": 8,
+  "min_quote_volume": 10000000,
+  "movement_percent": 3,
+  "volume_ratio": 2,
+  "max_ai_calls": 6,
+  "state_branch": "x-lei-state",
+  "feeds": [
+    {"name":"CoinDesk","group":"coindesk","url":"https://www.coindesk.com/arc/outboundfeeds/rss/","primary":false},
+    {"name":"Cointelegraph","group":"cointelegraph","url":"https://cointelegraph.com/rss","primary":false},
+    {"name":"Decrypt","group":"decrypt","url":"https://decrypt.co/feed","primary":false},
+    {"name":"Federal Reserve","group":"fed","url":"https://www.federalreserve.gov/feeds/press_all.xml","primary":true},
+    {"name":"SEC","group":"sec","url":"https://www.sec.gov/news/pressreleases.rss","primary":true},
+    {"name":"ECB","group":"ecb","url":"https://www.ecb.europa.eu/rss/press.html","primary":true},
+    {"name":"Ethereum Foundation","group":"ethereum-foundation","url":"https://blog.ethereum.org/feed.xml","primary":true,"symbols":["ETH"]}
+  ],
+  "approved_media": [],
+  "reddit_subreddits": ["CryptoCurrency","Bitcoin","ethereum"]
+}

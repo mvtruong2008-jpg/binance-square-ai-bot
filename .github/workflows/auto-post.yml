@@ -26,7 +26,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: binance-five-batch-publisher
+  group: binance-square-publisher
   cancel-in-progress: false
 
 jobs:
