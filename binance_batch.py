@@ -19,7 +19,7 @@ MAX_ATTEMPTS = 10
 POST_GAP_SECONDS = 60
 SYMBOL_COOLDOWN_HOURS = 12
 BATCH_COOLDOWN_HOURS = 5
-MAX_POSTS_24H = 30
+MAX_POSTS_24H = 20
 PRIORITY = ("BTC ETH BNB SOL XRP DOGE ADA AVAX LINK SUI "
             "DOT LTC UNI AAVE NEAR TRX ATOM ARB OP FIL XLM HBAR APT ETC").split()
 PUBLISH = os.environ.get("PUBLISH", "false").strip().lower() in {"true", "1", "yes"}
@@ -92,6 +92,13 @@ def run_coin(symbol):
 
 
 def main():
+    if PUBLISH:
+        from newsroom.state import control
+        from newsroom.core import HTTP
+        settings = control(HTTP(), local=not bool(os.getenv("GH_TOKEN")))
+        if settings.get("enabled") is True or settings.get("stop") is True:
+            print("LEGACY_SKIPPED: X LEI owns publishing or emergency stop is active.")
+            return 0
     history = load_history()
     now = datetime.now(timezone.utc)
     if PUBLISH:
@@ -134,7 +141,7 @@ def main():
         if posted >= BATCH_SIZE:
             break
         if PUBLISH and daily_count + posted >= MAX_POSTS_24H:
-            print("BATCH_BUDGET_REACHED: stopping at 30 locally tracked posts / 24h.")
+            print("BATCH_BUDGET_REACHED: stopping at 20 locally tracked posts / 24h.")
             break
         if posted:
             print(f"COIN_GAP: waiting {POST_GAP_SECONDS}s before the next success attempt.", flush=True)

@@ -412,6 +412,11 @@ def create_card(story, market, path=OUTPUT):
 
 
 def post_image(post_text, image_path):
+    from newsroom.state import control
+    from newsroom.core import HTTP
+    settings = control(HTTP(), local=not bool(os.getenv("GH_TOKEN")))
+    if settings.get("enabled") is True or settings.get("stop") is True:
+        raise RuntimeError("Legacy publisher disabled: X LEI active or emergency stop")
     if not os.getenv("BINANCE_SQUARE_OPENAPI_KEY"):
         raise RuntimeError("Missing BINANCE_SQUARE_OPENAPI_KEY GitHub Secret")
     script = BINANCE_SKILL / "scripts/post-image.mjs"

@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: binance-minute-pilot
+  group: binance-square-publisher
   cancel-in-progress: false
 
 jobs:

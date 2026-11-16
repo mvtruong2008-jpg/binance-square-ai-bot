@@ -1,0 +1,123 @@
+name: X LEI 3.0 - Autonomous Newsroom
+
+on:
+  schedule:
+    - cron: "17,47 * * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "PREVIEW creates artifacts only; LIVE requires control.json enabled"
+        type: choice
+        options: [PREVIEW, LIVE]
+        default: PREVIEW
+      initialize_state:
+        description: "Initialize durable journal once, without publishing"
+        type: boolean
+        default: false
+  push:
+    branches: [main, codex/x-lei-3-newsroom]
+    paths: ["newsroom/**", "tests/test_newsroom.py", "requirements-newsroom.txt", ".github/workflows/x-lei-newsroom.yml"]
+  pull_request:
+    paths: ["newsroom/**", "tests/test_newsroom.py", "requirements-newsroom.txt", ".github/workflows/x-lei-newsroom.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: binance-square-publisher
+  cancel-in-progress: false
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-newsroom.txt
+      - run: python -m unittest discover -s tests -v
+      - run: python -m unittest discover -s threads-trend-bot/tests -v
+
+  newsroom:
+    needs: tests
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      BINANCE_SQUARE_OPENAPI_KEY: ${{ secrets.BINANCE_SQUARE_OPENAPI_KEY }}
+      COINGECKO_DEMO_KEY: ${{ secrets.COINGECKO_DEMO_KEY }}
+      REDDIT_ACCESS_TOKEN: ${{ secrets.REDDIT_ACCESS_TOKEN }}
+      GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.5-flash-lite' }}
+      X_LEI_STOP: ${{ vars.X_LEI_STOP || 'false' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-newsroom.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Fetch reviewed official Binance publisher
+        run: |
+          git init binance-skills-hub
+          git -C binance-skills-hub remote add origin https://github.com/binance/binance-skills-hub.git
+          git -C binance-skills-hub fetch --depth 1 origin 7d1b1f78d525f9e653b96819f91a549302fda1da
+          git -C binance-skills-hub checkout --detach FETCH_HEAD
+      - name: Select authorized mode
+        id: mode
+        env:
+          EVENT: ${{ github.event_name }}
+          REQUEST_MODE: ${{ inputs.mode }}
+        run: |
+          python - <<'PY'
+          import os
+          from newsroom.core import HTTP
+          from newsroom.state import control
+          settings = control(HTTP(), local=os.environ['EVENT'] == 'push')
+          mode = 'PREVIEW'
+          if os.environ['EVENT'] == 'schedule' and settings.get('enabled') is True:
+              mode = 'LIVE'
+          if os.environ['EVENT'] == 'workflow_dispatch' and os.environ.get('REQUEST_MODE') == 'LIVE':
+              mode = 'LIVE'
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write('mode=' + mode + '\n')
+          PY
+      - name: Initialize journal without publication
+        if: github.event_name == 'workflow_dispatch' && inputs.initialize_state
+        run: python -m newsroom --init-state
+      - name: Run evidence-first newsroom
+        if: "!(github.event_name == 'workflow_dispatch' && inputs.initialize_state)"
+        env:
+          MODE: ${{ steps.mode.outputs.mode }}
+        run: python -u -m newsroom --mode "$MODE"
+      - name: Upload dashboard, evidence and media
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: x-lei-newsroom-${{ github.run_id }}
+          path: newsroom-output/
+          retention-days: 7
+          if-no-files-found: ignore
+      - name: Write operations summary
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          path = Path('newsroom-output/report.json')
+          if path.exists():
+              r = json.loads(path.read_text())
+              with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as f:
+                  f.write(f"X LEI: **{r['mode']} / {r['status']}**\n\n")
+                  f.write(f"Verified universe: {r.get('universe_size', 0)}. Drafts: {len(r['drafts'])}. AI calls: {r['ai_calls']}.\n\n")
+                  f.write('Download the artifact and open index.html for the dashboard.\n')
+          PY

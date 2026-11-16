@@ -16,6 +16,9 @@ class BinanceBatchTests(unittest.TestCase):
         env_patch = patch.dict(os.environ, {"TREND_HUNTER_ENABLED": "false"})
         env_patch.start()
         self.addCleanup(env_patch.stop)
+        control_patch = patch("newsroom.state.control", return_value={"enabled": False, "stop": False})
+        control_patch.start()
+        self.addCleanup(control_patch.stop)
         self.now = datetime(2026, 11, 3, 6, 0, tzinfo=timezone.utc)
 
     def test_five_unique_coin_plan(self):
