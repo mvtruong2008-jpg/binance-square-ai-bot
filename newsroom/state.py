@@ -116,6 +116,9 @@ class State:
         if not self.live:
             raise ValueError("PREVIEW cannot reserve publications")
         rows = self.data["posts"]
+        authorization = os.getenv("X_LEI_ONE_POST_REQUEST", "")
+        if authorization and any(r.get("authorization_id") == authorization for r in rows):
+            raise ValueError("One-post authorization already consumed")
         if any(r["event_id"] == topic["id"] for r in rows):
             raise ValueError("Event already reserved")
         recent = [r for r in rows if now-stamp(r["reserved_at"]) < timedelta(hours=24)]
@@ -129,6 +132,8 @@ class State:
                   "symbol": topic["market"]["symbol"], "coin_id": topic["market"]["id"], "score": topic["score"],
                   "media": media, "sources": [{k: s[k] for k in ("publisher", "url", "published")} for s in topic["sources"]]}
         before = copy.deepcopy(self.data)
+        if authorization:
+            record["authorization_id"] = authorization
         rows.append(record)
         try:
             self.save()  # Must be remotely committed BEFORE the external publish call.
@@ -145,6 +150,27 @@ def control(http, local=False):
     if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
         raise ValueError("Invalid repository")
     # No ref means the current default branch, independent of the checked-out revision.
-    row = http.json("https://api.github.com/repos/" + repo + "/contents/newsroom/control.json", headers={
-        "Authorization": "Bearer " + os.environ["GH_TOKEN"], "Accept": "application/vnd.github+json"})
-    return json.loads(base64.b64decode(row["content"]))
+    def read(path):
+        row = http.json("https://api.github.com/repos/" + repo + "/contents/" + path, headers={
+            "Authorization": "Bearer " + os.environ["GH_TOKEN"], "Accept": "application/vnd.github+json"})
+        return json.loads(base64.b64decode(row["content"]))
+    request = os.getenv("X_LEI_ONE_POST_REQUEST", "")
+    if not request:
+        return read("newsroom/control.json")
+    if not re.fullmatch(r"[a-z0-9-]{1,60}", request):
+        raise ValueError("Invalid one-post request")
+    try:
+        main_settings = read("newsroom/control.json")
+        if main_settings.get("stop") is not False:
+            raise ValueError("Emergency stop is active")
+    except RuntimeError as exc:
+        if "HTTP 404" not in str(exc):
+            raise
+        # Before deployment main has no newsroom control; only the scoped trial can run.
+    permit = read("authorizations/" + request + ".json?ref=x-lei-state")
+    if (permit.get("request_id") != request or permit.get("max_posts") != 1
+            or permit.get("ref") != os.getenv("GITHUB_REF")
+            or os.getenv("GITHUB_EVENT_NAME") != "push"
+            or stamp(permit["expires_at"]) <= utcnow()):
+        raise ValueError("One-post authorization expired or scope mismatch")
+    return {"enabled": True, "stop": False, "free_ai_confirmed": permit.get("free_ai_confirmed") is True}

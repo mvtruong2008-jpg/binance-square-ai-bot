@@ -55,6 +55,7 @@ jobs:
       REDDIT_ACCESS_TOKEN: ${{ secrets.REDDIT_ACCESS_TOKEN }}
       GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.5-flash-lite' }}
       X_LEI_STOP: ${{ vars.X_LEI_STOP || 'false' }}
+      X_LEI_ONE_POST_REQUEST: ${{ github.event_name == 'push' && github.ref == 'refs/heads/codex/x-lei-3-newsroom' && github.event.head_commit.message == 'trigger:x-lei-one-post-trial-20261116-1624' && 'trial-20261116-1624' || '' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -86,6 +87,8 @@ jobs:
           from newsroom.state import control
           settings = control(HTTP(), local=os.environ['EVENT'] == 'push')
           mode = 'PREVIEW'
+          if os.environ.get('X_LEI_ONE_POST_REQUEST'):
+              mode = 'LIVE'
           if os.environ['EVENT'] == 'schedule' and settings.get('enabled') is True:
               mode = 'LIVE'
           if os.environ['EVENT'] == 'workflow_dispatch' and os.environ.get('REQUEST_MODE') == 'LIVE':

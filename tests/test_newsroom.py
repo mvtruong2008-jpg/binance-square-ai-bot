@@ -16,7 +16,7 @@ from unittest.mock import Mock, patch
 from newsroom import core, hunters, intelligence, market, media, performance, publisher
 from newsroom.__main__ import run
 from newsroom.editor import Editor, validate
-from newsroom.state import State, empty_state
+from newsroom.state import State, control, empty_state
 
 NOW = datetime.now(timezone.utc)
 
@@ -234,6 +234,35 @@ class JournalPublisherTests(unittest.TestCase):
         store = State(Mock(), live=False)
         with self.assertRaises(ValueError):
             store.reserve(topic(), {}, {}, core.load_config(), NOW)
+
+    def test_one_post_permit_cannot_be_reused_for_another_event(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = self.store(tmp)
+            with patch.dict(os.environ, {"X_LEI_ONE_POST_REQUEST": "trial-test"}):
+                draft = Editor(Mock(), 6).draft(topic(), [])
+                row = store.reserve(topic(), draft, {}, core.load_config(), NOW)
+                self.assertEqual(row["authorization_id"], "trial-test")
+                different = {**topic(), "id": "different-event"}
+                with self.assertRaisesRegex(ValueError, "already consumed"):
+                    store.reserve(different, draft, {}, core.load_config(), NOW+timedelta(hours=2))
+
+    def test_one_post_control_requires_unexpired_exact_scope(self):
+        permit = {"request_id": "trial-test", "max_posts": 1, "ref": "refs/heads/trial", "expires_at": (NOW+timedelta(hours=1)).isoformat(), "free_ai_confirmed": True}
+        http = Mock()
+        def answer(data):
+            return {"content": base64.b64encode(json.dumps(data).encode()).decode()}
+        with patch.dict(os.environ, {"GITHUB_REPOSITORY": "owner/repo", "GH_TOKEN": "test-only", "X_LEI_ONE_POST_REQUEST": "trial-test", "GITHUB_REF": "refs/heads/trial", "GITHUB_EVENT_NAME": "push"}):
+            http.json.side_effect = [RuntimeError("HTTP 404"), answer(permit)]
+            self.assertTrue(control(http)["enabled"])
+            http.json.side_effect = [answer({"stop": False}), answer({**permit, "expires_at": (NOW-timedelta(hours=1)).isoformat()})]
+            with self.assertRaises(ValueError):
+                control(http)
+            http.json.side_effect = [answer({"stop": True})]
+            with self.assertRaisesRegex(ValueError, "stop"):
+                control(http)
+            http.json.side_effect = [answer({"stop": False}), answer({**permit, "ref": "refs/heads/other"})]
+            with self.assertRaises(ValueError):
+                control(http)
 
     def test_archive_committed_before_old_records_removed(self):
         with tempfile.TemporaryDirectory() as tmp:
